@@ -2,7 +2,8 @@
 import os
 import anthropic
 
-_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 SYSTEM_PROMPT = """당신은 럭셔리 패션 화보 프롬프트 전문가입니다.
 입력된 상품 정보와 모델 정보를 바탕으로 Higgsfield AI 이미지 생성용 영문 프롬프트를 작성하세요.
@@ -20,7 +21,15 @@ JSON으로만 응답:
 
 
 def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background: str = "Seoul luxury boutique") -> dict:
-    """상품 메타 + 모델 속성 → Higgsfield 생성 프롬프트 딕셔너리를 반환한다."""
+    """상품 메타 + 모델 속성 → Higgsfield 생성 프롬프트 딕셔너리를 반환한다.
+    ANTHROPIC_API_KEY 미설정 시 스텁 프롬프트를 반환한다."""
+    if _client is None:
+        return {
+            "prompt": f"Luxury fashion editorial photo, {model_attrs}, preserving original product design/color/pattern/logo, background: {background}, Vogue style",
+            "negative_prompt": "altered product design, distorted logo",
+            "stub": True,
+        }
+
     user_msg = f"""상품 정보:
 {product_meta}
 

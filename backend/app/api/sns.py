@@ -3,7 +3,7 @@ import os
 import sys
 import uuid
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
