@@ -1,16 +1,17 @@
 # 단일 엔드포인트로 전체 파이프라인(분석→이미지→영상→SNS)을 실행하는 라우터
 import os
 import sys
+import time
 import uuid
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.models.base import get_db
 from app.models.entities import Product, AIModel, GenerationJob, Content
-from app.services.quality import validate_generation
+from app.services.quality import run_with_quality_gate
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -24,6 +25,7 @@ class PipelineRequest(BaseModel):
 @router.post("/run")
 def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     """상품 ID 하나로 화보·영상·SNS 카피를 자동 생성하는 E2E 파이프라인."""
+    start_time = time.time()
     product = db.query(Product).filter(Product.product_id == req.product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="product not found")
@@ -57,12 +59,12 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
 
     model_attrs = {"hair_style": ai_model.hair_style, "age": ai_model.age, "mood": ai_model.mood, "fashion_style": ai_model.fashion_style}
 
-    # Step 3: 프롬프트 + 이미지 생성
+    # Step 3: 프롬프트 + 이미지 생성 (품질 게이트 미달 시 최대 2회까지 자동 재생성)
     prompt_result = generate_photoshoot_prompt(product_meta, model_attrs, req.background)
-    image_result = generate_image(prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id)
-
-    # Step 4: 품질 검증 (스텁 이미지면 패스, 실제 이미지면 SSIM 검증)
-    quality = validate_generation(image_path, image_path)
+    image_result, quality, attempts = run_with_quality_gate(
+        generate_fn=lambda: generate_image(prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id),
+        original_path=image_path,
+    )
 
     # Step 5: 영상 생성
     video_result = generate_video(image_url=image_result["image_url"])
@@ -70,12 +72,14 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     # Step 6: SNS 카피
     sns_result = generate_sns_content(product_meta)
 
+    processing_time_sec = round(time.time() - start_time, 3)
+
     # DB 저장
     img_job = GenerationJob(
         job_id=str(uuid.uuid4()), type="image", product_id=product.product_id,
-        model_id=ai_model.model_id, status="done",
+        model_id=ai_model.model_id, status="done" if quality["overall_pass"] else "failed",
         params={"prompt": prompt_result["prompt"]},
-        result_refs={"image_url": image_result["image_url"]},
+        result_refs={"image_url": image_result["image_url"], "quality": quality, "attempts": attempts},
     )
     vid_job = GenerationJob(
         job_id=str(uuid.uuid4()), type="video", product_id=product.product_id,
@@ -98,6 +102,8 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
         "prompt": prompt_result["prompt"],
         "image_url": image_result["image_url"],
         "quality": quality,
+        "regeneration_attempts": attempts,
+        "processing_time_sec": processing_time_sec,
         "video_url": video_result["video_url"],
         "sns": sns_result,
         "stubs": {
