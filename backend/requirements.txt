@@ -9,3 +9,5 @@ rq==1.16.2
 python-multipart==0.0.12
 aiofiles==24.1.0
 python-dotenv==1.0.1
+scikit-image==0.26.0
+opencv-python-headless==4.13.0.92
