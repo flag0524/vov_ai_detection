@@ -6,11 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상품 이미지를 업로드하면 AI 모델 화보 이미지·릴스 영상·SNS 카피를 자동 생성하는 마케팅 자동화 플랫폼이다.
 
-현재 상태는 **문서 단계**다. 코드는 아직 없고 `docs/`에 PRD/TRD/개발계획서만 존재한다. 구현을 시작하기 전 반드시 이 세 문서를 읽고 정렬 상태를 유지할 것.
+현재 상태는 **Phase 0~6 전체가 스텁 모드로 1회전 완료**다 (2026-07-01). E2E 파이프라인(`/pipeline/run`: 상품분석→모델생성→프롬프트→이미지→SSIM검증(+미달 시 자동 재생성 최대 2회)→영상→SNS카피)이 Next.js 프론트엔드(`frontend/`)에서 백엔드까지 CORS 포함 정상 동작한다. Higgsfield MCP(Agent 3/4 실호출)는 `claude.ai` 커넥터 인증 대기 중이며, Redis는 개발 머신에 설치 인프라가 없어 보류 상태(동기 처리 중)다 — 이 두 가지가 풀리면 Phase 2/3/6의 게이트를 실생성물 기준으로 재검증해야 한다. 작업 전 반드시 아래 문서들을 읽고 정렬 상태를 유지할 것.
 
 - [docs/PRD.md](docs/PRD.md) — 제품 요구사항(기능·플로우·KPI).
 - [docs/TRD.md](docs/TRD.md) — 기술 요구사항(아키텍처·API·데이터 모델). **최신 버전 v2.0 기준.**
 - [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) — Phase 0~6 로드맵·마일스톤·디렉터리 구조.
+- [docs/plan.md](docs/plan.md) — Phase별 실행 계획 및 체크리스트.
+- [docs/status.md](docs/status.md) — 진행 현황(Phase 완료 여부·확정 의사결정). **작업 시작 전 항상 최신 상태 확인.**
+- [docs/tests.md](docs/tests.md) — Phase별 검증 기준.
+- [docs/goal.md](docs/goal.md) — 프로젝트 목표.
 
 ## 핵심 아키텍처 결정 (문서 전반에 걸친 big picture)
 
@@ -38,13 +42,16 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 | Agent 4 Video Creator | 이미지→영상 | `higgsfield-generate` (image-to-video) |
 | Agent 5 Marketing | 문구·해시태그·카피 | — |
 
-### 예정 스택 / 디렉터리 (TRD·개발계획서 기준, 아직 미생성)
+### 스택 / 디렉터리 현황
 
-- Frontend: Next.js (App Router, TS) — `frontend/`
-- Backend: FastAPI (Python, Pydantic) — `backend/` (api: product/ai/sns 라우터)
-- 비동기: Celery/RQ + Redis Job Queue — `workers/` (Higgsfield MCP 호출 비동기 처리)
-- DB: PostgreSQL(메타) + pgvector/Qdrant(검수 임베딩), S3 호환 스토리지
-- Agents: `agents/` (MCP Agent 1~5)
+- Frontend: Next.js 16.2.9 (App Router, TS, Tailwind) — `frontend/`, 업로드→생성→결과 확인 단일 화면(`app/page.tsx`) 동작 중. 스캐폴딩이 자동 생성한 `frontend/CLAUDE.md`/`AGENTS.md`는 최신 Next.js 공식 컨벤션(에이전트에게 번들 문서 참고를 안내)이니 그대로 둘 것
+- Backend: FastAPI (Python, Pydantic) — `backend/` — 헬스체크·상품 업로드/조회·AI·SNS·파이프라인 API 동작 중
+- DB: SQLite(`backend/jblanc.db`, 개발) → PostgreSQL(운영) 전환 예정, 4개 테이블 ORM 구성 완료
+- Storage: 로컬 파일시스템 — `storage/uploads/`, `storage/results/` → S3 전환 예정
+- Vector DB: pgvector 예정 (Phase 2+, 검수 임베딩용)
+- 품질 검증: `backend/app/services/quality.py` — scikit-image 기반 SSIM 실계산 (얼굴 유사도는 임베딩 입력 시에만 계산)
+- 비동기: Celery/RQ + Redis Job Queue — `workers/`, `backend/app/services/queue.py` (패키지만 설치, 실연결 보류 — 이 머신에 redis-server/WSL 인프라 없음, 현재는 동기 처리)
+- Agents: `agents/` — Agent 1(상품분석)/2(프롬프트)/5(SNS)는 Anthropic API 실동작 + 스텁 fallback, Agent 3(Soul ID)/4(영상)는 Higgsfield MCP 인증 대기로 스텁 fallback만 동작 (`higgsfield-soul-id`/`higgsfield-generate` 실호출은 TODO)
 
 ## 불변 제약 (생성 단계의 게이트)
 
@@ -60,4 +67,6 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 
 ## 빌드/테스트
 
-아직 코드·빌드 시스템이 없다. 스캐폴딩 후 이 절에 build/lint/test 및 단일 테스트 실행 명령을 채울 것.
+- Backend 실행: `backend/.venv` 가상환경 사용, `backend/main.py`가 FastAPI 엔트리포인트.
+- 검증 기준은 Phase별로 [docs/tests.md](docs/tests.md)에 정의되어 있으며, 각 Phase 완료 시 이를 충족해야 다음 Phase로 진행한다.
+- Frontend/Celery/Redis 등 미도입 스택은 도입 시 이 절을 갱신할 것.
