@@ -1,95 +1,86 @@
-# 개발계획서 — JBLANC AI Fashion Marketing Automation System
+# 개발계획서 — 제이블랑(JBLANC) AI Fashion Content Automation System
 
-> Development Plan
-> 버전 1.0 · 작성일 2026-06-30
+- 문서 버전: v1.1
+- 작성일: 2026-07-02
+- 변경 이력: v1.1 — **동작·표정 자연스러움 검증(Naturalness QA)** 작업을 Phase 3/4에 반영
 
 ---
 
-## 1. 개발 전략
+## 1. 개발 원칙
 
-핵심 리스크가 가장 큰 AI 일관성(모델 Identity 유지)과 상품 원본 보존을 먼저 검증한다. 이미지·영상 생성은 자체 추론 인프라 대신 Higgsfield MCP로 처리하고, 에이전트가 MCP를 직접 호출한다. 검증된 파이프라인 위에 영상·SNS 자동화·프론트엔드를 순차로 쌓는다.
+- Production 수준 코드: 모듈화, API 구조 설계, Docker 지원, 환경변수 관리, Logging, Error Handling, 테스트 코드 필수
+- 구현 순서: Architecture 설계 → DB 설계 → Backend API → MCP Agent → AI Pipeline 연결 → Frontend → 테스트 → 배포
 
-각 단계는 독립적으로 검증 가능한 산출물을 갖는다.
+## 2. 단계별 계획
 
-## 2. 단계별 로드맵
+### Phase 0 — 기반 구축 (1주)
+- 시스템 아키텍처 확정 (TRD 기준)
+- PostgreSQL / Vector DB 스키마 설계 (naturalness_score 컬럼 포함)
+- FastAPI 프로젝트 스캐폴딩, Docker Compose, 환경변수/로깅 셋업
 
-### Phase 0 — 기반 셋업
+### Phase 1 — 상품 분석 & 프롬프트 생성 (2주)
+- 상품 이미지 업로드 API
+- Vision Model 상품 분석 (의류 종류/소재/색상/디자인/스타일)
+- 패션 컨셉 생성 + Prompt Engineering 모듈
+  - 표정·포즈 자연스러움 지시어를 기본 프롬프트 템플릿에 내장
+  - Negative Prompt 사전 구축 (identity + naturalness 항목 포함)
+- 산출물: 분석 API, 프롬프트 생성기, 유닛 테스트
 
-- 모노레포 구조(`frontend`, `backend`, `agents`, `docs`) 구성.
-- FastAPI 스켈레톤 + PostgreSQL + Object Storage + Job Queue 연결.
-- 검증: 헬스체크 API와 더미 업로드/조회 동작.
+### Phase 2 — AI 모델 고정 시스템 (2주)
+- 모델 ID 시스템 (JBLANC_MODEL_001 형식)
+- 얼굴/헤어/체형/피부톤/분위기/포즈 스타일 저장 (Vector DB + PostgreSQL)
+- validate_identity(): Face embedding similarity (threshold 0.85)
+- 산출물: 모델 등록/호출 API, 얼굴 검증 모듈
 
-### Phase 1 — 상품 분석 & AI 모델 생성 (핵심 검증)
+### Phase 3 — 이미지 생성 + 자연스러움 검증 (3주)
+- create_fashion_image() 구현 (identity reference 적용)
+- **validate_naturalness() — 이미지** (신규 핵심 작업)
+  - Facial landmark 기반 표정 왜곡/경직 검출
+  - Pose estimation 기반 관절·손가락 이상 검출
+  - naturalness_score 산출 및 threshold 기반 자동 재생성 (최대 3회)
+- 품질 검증 파이프라인 연결: identity → naturalness → 상품 디테일
+- Instagram Feed 이미지 출력 (1080x1350)
+- 산출물: 이미지 생성 파이프라인 E2E, QA 리포트
 
-- Agent 1 상품 분석으로 메타데이터 추출.
-- Agent 3가 `higgsfield-soul-id`로 모델 1회 학습 후 `soul_reference_id` 저장·재사용.
-- 검증: 동일 `model_id`(= 동일 Soul ID)로 여러 이미지 생성 시 얼굴 동일성 점수 확보.
+### Phase 4 — 영상 생성 + 동작 자연스러움 검증 (3주)
+- Higgsfield MCP 연동, create_fashion_video() 구현
+- Motion/Camera Prompt 템플릿 (자연스러운 걷기·손동작·표정 지시어 포함)
+- **validate_naturalness() — 영상** (신규 핵심 작업)
+  - 프레임 간 표정 급변(morphing)·얼굴 떨림 검출
+  - Optical flow / pose sequence 기반 걷기 리듬·보폭·팔 스윙 평가
+  - 관절 궤적 연속성 검사
+- Reel/Story 출력 (1080x1920)
+- 산출물: 영상 생성 파이프라인 E2E, 동작 QA 모듈
 
-### Phase 2 — 상품 원본 유지 이미지 생성
+### Phase 5 — 인스타그램 자동 배포 (2주)
+- Caption/Hashtag/상품 설명 자동 생성
+- 배포 스케줄링 및 Instagram 연동
+- Frontend 업로드/검수 UI 완성 (QA fail 건 manual_review 화면 포함)
+- 산출물: 전체 시스템 E2E, 운영 배포
 
-- Higgsfield product-photoshoot / image-to-image reference로 상품 원본 보존.
-- Agent 2 프롬프트 자동 생성 연결.
-- 검증: 상품 디자인·색상·패턴·로고 유지율(SSIM/임베딩) 기준 통과.
+## 3. 일정 요약
 
-### Phase 3 — 영상 생성
+| Phase | 기간 | 핵심 산출물 |
+|---|---|---|
+| 0 | 1주 | 아키텍처, DB, 인프라 |
+| 1 | 2주 | 상품 분석 + 프롬프트 생성 |
+| 2 | 2주 | 모델 ID + 얼굴 고정 |
+| 3 | 3주 | 이미지 생성 + 표정·포즈 QA |
+| 4 | 3주 | 영상 생성 + 동작 QA |
+| 5 | 2주 | 인스타 자동 배포 |
+| 합계 | 13주 | |
 
-- Agent 4가 `higgsfield-generate`(image-to-video)로 5~15초 릴스(9:16) 생성.
-- 카메라 워킹·모션 옵션 적용.
-- 검증: 프레임 간 얼굴 일관성, 배경 왜곡 점수.
+## 4. 테스트 계획
 
-### Phase 4 — SNS 콘텐츠 자동 생성
+- 유닛: 프롬프트 생성, 검증 로직(threshold 경계값 포함)
+- 통합: 상품 업로드 → 콘텐츠 출력 E2E
+- QA 회귀: identity_score / naturalness_score threshold 변경 시 회귀 테스트
+- 육안 검수: 자연스러움 자동 검증과 사람 평가의 일치율 측정 → threshold 튜닝
 
-- Agent 5로 게시글 문구·해시태그·광고 카피 생성.
-- 검증: 채널별 톤·해시태그 규칙 충족.
+## 5. 완료 기준 (Definition of Done)
 
-### Phase 5 — 프론트엔드 & 오케스트레이션
-
-- Next.js: 상품 업로드 → 생성 요청 → 결과 확인 → 다운로드 → SNS 예약.
-- MCP Orchestrator로 전체 파이프라인 end-to-end 연결.
-- 검증: 상품 1건 업로드 → 화보·릴스·카피 자동 산출 시연.
-
-### Phase 6 — 품질 검증 자동화 & 안정화
-
-- Image/Video Quality Score 자동 평가 및 미달 재생성 루프.
-- 브랜드 스타일 학습(JBLANC STYLE MODEL) 반영.
-- 검증: 자동 평가 통과율 및 처리 시간 측정.
-
-## 3. 마일스톤
-
-| 마일스톤 | 산출물 | 완료 기준 |
-| --- | --- | --- |
-| M1 | 상품 분석 + 모델 Identity 유지 | 동일 모델 다중 이미지 생성 |
-| M2 | 상품 원본 보존 이미지 | 유지율 기준 통과 |
-| M3 | 릴스 영상 생성 | 5~15초 영상 + 일관성 점수 |
-| M4 | SNS 콘텐츠 자동화 | 문구·해시태그·카피 산출 |
-| M5 | End-to-End 플랫폼 | 업로드→콘텐츠 자동 산출 시연 |
-| M6 | 품질 자동검증 안정화 | 자동 평가·재생성 루프 가동 |
-
-## 4. 디렉터리 구조 (예정)
-
-```
-vov_ai_detection/
-├── docs/                 # PRD, TRD, 개발계획서
-├── frontend/             # Next.js
-├── backend/              # FastAPI
-│   ├── app/api/          # product / ai / sns 라우터
-│   ├── app/services/     # 파이프라인·스토리지·큐
-│   └── app/models/       # ORM 엔티티
-├── agents/               # MCP Agent 1~5 (Higgsfield MCP 호출)
-└── workers/              # Higgsfield MCP 호출 비동기 워커
-```
-
-## 5. 리스크 및 대응
-
-| 리스크 | 영향 | 대응 |
-| --- | --- | --- |
-| 모델 얼굴 일관성 저하 | 브랜드 신뢰도 | Soul ID 고정 + 자동 일관성 점수 |
-| 상품 디자인 변형 | 상품 오인 | Higgsfield reference 제어 + 유지율 검증 회송 |
-| 영상 품질 미달 | 광고 부적합 | 품질 점수 기준 미달 재생성 |
-| 외부 MCP 비용·레이트리밋·지연 | 처리 속도·비용 | 비동기 큐 + 재시도·타임아웃 + 호출 모니터링 |
-
-## 6. 검증 원칙
-
-- 각 Phase는 자동 평가 점수 또는 시연으로 완료를 증명한다.
-- 상품 원본 유지율과 모델 동일성은 모든 생성 단계의 게이트로 둔다.
-- 기준 미달 산출물은 배포하지 않고 재생성 루프로 회송한다.
+1. 얼굴 일관성: similarity ≥ 0.85, 동일 인물 인식률 95% 이상
+2. **동작·표정 자연스러움: naturalness_score ≥ 0.9, 부자연 검출률 5% 미만**
+3. 상품 디테일 왜곡 없음
+4. 상품 업로드만으로 피드/릴스/스토리 + 캡션/해시태그 자동 생성
+5. Docker 환경에서 전체 파이프라인 재현 가능, 테스트 커버리지 확보
