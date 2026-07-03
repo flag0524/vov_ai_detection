@@ -38,35 +38,35 @@ vov_ai_detection/
 ## Phase별 작업
 
 ### Phase 0 — 기반 셋업
-- [ ] 디렉터리 스캐폴딩 (frontend, backend, agents, workers)
-- [ ] FastAPI 스켈레톤 + 헬스체크 엔드포인트
-- [ ] PostgreSQL 연결 + 스키마 초기화 (AIModel, Product, GenerationJob, Content)
-- [ ] Redis + Job Queue 연결
-- [ ] Object Storage 연결 + 업로드 더미 테스트
-- [ ] 검증 → tests.md Phase 0
+- [x] 디렉터리 스캐폴딩 (frontend, backend, agents, workers)
+- [x] FastAPI 스켈레톤 + 헬스체크 엔드포인트
+- [x] DB 연결 + 스키마 초기화 (AIModel, Product, GenerationJob, Content) — 개발은 SQLite, PostgreSQL은 운영 전환 시
+- [ ] Redis + Job Queue 연결 — 보류 (이 머신에 설치 인프라 없음, 동기 처리 중. 2026-07-01 사용자 승인)
+- [x] Object Storage 연결 + 업로드 더미 테스트 (로컬 파일시스템)
+- [x] 검증 → tests.md Phase 0
 
 ### Phase 1 — 상품 분석 & AI 모델 생성
 - [x] Agent 1: 상품 이미지 Vision 분석 → 메타데이터 추출 (category, color, material 등) — ANTHROPIC_API_KEY 없을 시 스텁 fallback
 - [x] POST /product/upload API 구현
-- [x] Agent 3: `higgsfield-soul-id` 호출 → `soul_reference_id` DB 저장 — **Higgsfield MCP 실호출은 TODO, 현재 스텁 fallback**
+- [x] Agent 3: Soul ID → `soul_reference_id` DB 저장 — Soul 학습 API 미공개로 `create_soul_id()`는 스텁 유지 (프롬프트 고정 토큰으로 일관성 대체, API 공개 시 함수 교체)
 - [x] POST /ai/model/create API 구현
 - [x] 검증 → tests.md Phase 1 (스텁 모드 한정)
-- [ ] Higgsfield MCP 인증 완료 후 Agent 3 실연동 구현 및 재검증
+- [ ] 실생성물 재검증 — 선결: Higgsfield 크레딧 충전 (연동 코드·인증은 완료)
 
 ### Phase 2 — 상품 원본 유지 이미지 생성
 - [x] Agent 2: 프롬프트 자동 생성 (상품 메타 + 모델 속성 → 프롬프트) — 스텁 fallback 포함
-- [x] Agent 3: `higgsfield-product-photoshoot` / `higgsfield-generate` 호출 — **TODO, 현재 스텁 URL 반환**
+- [x] Agent 3: Higgsfield Platform REST 실연동 (`higgsfield-ai/soul/standard`, `agents/higgsfield_client.py`) — 인증 검증 완료, 크레딧 부족 시 스텁 강등
 - [x] POST /ai/image/generate API 구현 (동기 처리, job_id는 DB 기록용)
-- [x] 상품 원본 유지율 검수 (SSIM) 실계산 활성화 — 미달 시 재생성 큐 연결은 미구현 (`action: requeue` 값만 반환, 실제 큐잉 없음)
+- [x] 상품 원본 유지율 검수 (SSIM) 실계산 활성화 + 미달 시 동기 재생성 루프 (`run_with_quality_gate`, 최대 2회)
 - [x] 검증 → tests.md Phase 2 (SSIM 실계산 확인, 이미지 자체는 스텁)
-- [ ] Higgsfield 실연동 후 실이미지 기준 SSIM 재검증, 재생성 큐 자동화
+- [ ] 실이미지 기준 SSIM 재검증 — 선결: Higgsfield 크레딧 충전
 
 ### Phase 3 — 영상 생성
-- [x] Agent 4: `higgsfield-generate` (image-to-video, 5~15초, 9:16) — **TODO, 현재 스텁 URL 반환**
+- [x] Agent 4: Higgsfield Platform REST 실연동 (`higgsfield-ai/dop/preview`, image-to-video 5~15초) — 크레딧 부족 시 스텁 강등
 - [x] POST /ai/video/generate API 구현
-- [x] 카메라 워킹·모션 옵션 파라미터화 (`camera_motion` 파라미터)
+- [x] 카메라 워킹·모션 옵션 파라미터화 (`camera_motion` → 영상 프롬프트 매핑)
 - [x] 검증 → tests.md Phase 3 (스텁 모드 한정)
-- [ ] Higgsfield 실연동 후 얼굴 일관성/배경 왜곡 재검증
+- [ ] 실영상 기준 얼굴 일관성/배경 왜곡 재검증 — 선결: Higgsfield 크레딧 충전
 
 ### Phase 4 — SNS 콘텐츠 자동 생성
 - [x] Agent 5: 게시글 문구 + 해시태그 + 광고 카피 생성 — 스텁 fallback 포함
@@ -76,7 +76,7 @@ vov_ai_detection/
 ### Phase 5 — 프론트엔드 & 오케스트레이션
 - [x] Next.js: 상품 업로드 → 생성 요청 → 결과 확인 화면 (`/pipeline/run` 동기 호출 방식, 다운로드·SNS 예약 화면은 미구현)
 - [x] MCP Orchestrator: Agent 1~5 end-to-end 파이프라인 연결 (`agents/orchestrator.py`, `backend/app/api/pipeline.py`)
-- [x] 검증 → tests.md Phase 5 (curl + Origin 헤더로 CORS/API 계약 검증, 실브라우저 클릭 조작은 미검증)
+- [x] 검증 → tests.md Phase 5 (curl CORS 검증 + 2026-07-03 실브라우저 클릭 E2E: 업로드→생성→화보/영상/SNS 카피 렌더링 확인)
 - [ ] GET /jobs/{job_id} 상태 폴링 UI 연결 — 현재 파이프라인이 동기 처리라 폴링 불필요, Redis 도입 후 비동기 전환 시 추가
 - [ ] 다운로드, SNS 예약 등록 화면 — Phase 5 후속 작업으로 보류
 
