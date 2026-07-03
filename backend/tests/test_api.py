@@ -40,6 +40,16 @@ def test_product_upload_and_get(client):
     assert resp.json()["product_id"] == product_id
 
 
+def test_corrupt_image_rejected_with_400(client):
+    """회귀 테스트: 손상 이미지는 업로드 시점에 400으로 거부.
+    (브라우저 E2E에서 4바이트 더미 파일이 /pipeline/run을 500으로 죽이던 버그)"""
+    resp = client.post(
+        "/product/upload",
+        files={"file": ("bad.jpg", io.BytesIO(b"\xff\xd8\xff\xe0"), "image/jpeg")},
+    )
+    assert resp.status_code == 400
+
+
 # --- Phase 1: 모델 생성 (스텁 모드) ---
 
 def test_model_create_stores_soul_reference_id(client):

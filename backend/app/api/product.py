@@ -1,8 +1,10 @@
 # 상품 업로드 및 조회 라우터
+import io
 import os
 import uuid
 import aiofiles
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 from app.models.base import get_db
 from app.models.entities import Product
@@ -14,13 +16,20 @@ STORAGE_DIR = os.getenv("STORAGE_LOCAL_DIR", "../storage")
 
 @router.post("/upload")
 async def upload_product(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    content = await file.read()
+
+    # 손상/비이미지 파일은 저장 전에 거부 (파이프라인 SSIM 단계에서 500으로 죽는 것 방지)
+    try:
+        Image.open(io.BytesIO(content)).verify()
+    except (UnidentifiedImageError, OSError, SyntaxError):
+        raise HTTPException(status_code=400, detail="유효한 이미지 파일이 아닙니다")
+
     product_id = str(uuid.uuid4())
     ext = os.path.splitext(file.filename or "image.jpg")[1]
     save_path = os.path.join(STORAGE_DIR, "uploads", f"{product_id}{ext}")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     async with aiofiles.open(save_path, "wb") as f:
-        content = await file.read()
         await f.write(content)
 
     product = Product(product_id=product_id, name=file.filename, image_ref=save_path)
