@@ -22,13 +22,19 @@ JSON으로만 응답:
 
 def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background: str = "Seoul luxury boutique") -> dict:
     """상품 메타 + 모델 속성 → Higgsfield 생성 프롬프트 딕셔너리를 반환한다.
-    ANTHROPIC_API_KEY 미설정 시 스텁 프롬프트를 반환한다."""
-    if _client is None:
-        return {
+    ANTHROPIC_API_KEY 미설정 또는 API 실패 시 스텁 프롬프트를 반환한다."""
+    def _stub(reason: str = "") -> dict:
+        result = {
             "prompt": f"Luxury fashion editorial photo, {model_attrs}, preserving original product design/color/pattern/logo, background: {background}, Vogue style",
             "negative_prompt": "altered product design, distorted logo",
             "stub": True,
         }
+        if reason:
+            result["reason"] = reason
+        return result
+
+    if _client is None:
+        return _stub()
 
     user_msg = f"""상품 정보:
 {product_meta}
@@ -38,12 +44,16 @@ def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background
 
 배경 선호: {background}"""
 
-    message = _client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=400,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-    )
+    try:
+        message = _client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=400,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+    except anthropic.APIError as e:
+        # 크레딧 부족 등 API 실패 시 파이프라인을 죽이지 않고 스텁으로 강등
+        return _stub(reason=str(e))
 
     import json
     raw = message.content[0].text.strip()

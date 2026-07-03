@@ -70,7 +70,7 @@
 ### 현재 블로커
 1. **Higgsfield 크레딧 부족** (`not_enough_credits`) — 계정에 크레딧 충전 필요. 충전 즉시 코드 변경 없이 실생성 동작
 2. **Soul Character 학습 API 미공개** — Platform API 공개 문서에 text2image(`soul/standard`)만 존재. `create_soul_id()`는 스텁 유지, 학습 API 공개 시 해당 함수만 교체
-3. **ANTHROPIC_API_KEY 미설정** — Agent 1/2/5는 여전히 스텁 fallback
+3. **Anthropic 크레딧 부족** — 2026-07-03 사용자가 ANTHROPIC_API_KEY 제공 → `.env` 저장, 키 인증은 유효하나 계정 잔액 0 (`credit balance is too low`). 콘솔(Plans & Billing)에서 충전 즉시 Agent 1/2/5 실동작. 이 과정에서 "키는 있으나 API 실패" 시 파이프라인이 500으로 죽는 갭 발견 → Agent 1/2/5도 Agent 3/4처럼 API 실패 시 스텁 강등 + `reason` 기록하도록 수정 (실검증 완료)
 
 ### 세션 종료 시점 확정 의사결정 (2026-07-02, 사용자 승인)
 
@@ -120,3 +120,4 @@ Phase 1~6의 실생성물 기준 완료는 다음 두 가지 외부 인증에 �
 | 2026-07-03 | pytest 스위트 16건 구축·통과. 사용자 제공 Higgsfield key+secret으로 REST 실연동 코드 완성 (Agent 3/4), 인증 검증 성공, 크레딧 부족(`not_enough_credits`)으로 실생성만 대기 |
 | 2026-07-03 | 실브라우저 클릭 E2E 검증 완료 (Phase 5 한계 해소). 손상 이미지 업로드 → 500 크래시 버그 발견·수정 (업로드 시점 400 거부, 회귀 테스트 포함 17건 통과). 4바이트 더미 업로드 파일 정리 |
 | 2026-07-03 | **목표 완료 확정 (사용자 승인)**: Phase 0~6 스텁 모드 기준 완료 처리. 실생성물 재검증은 크레딧 충전/ANTHROPIC_API_KEY 확보 후 별도 요청으로 진행 |
+| 2026-07-03 | 사용자 제공 ANTHROPIC_API_KEY `.env` 저장 — 키 유효하나 Anthropic 계정 잔액 0. Agent 1/2/5에 API 실패 시 스텁 강등 추가 (파이프라인 500 방지), 17건 테스트 통과 |

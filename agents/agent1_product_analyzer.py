@@ -47,20 +47,24 @@ def analyze_product_image(image_path: str) -> dict:
     media_type_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
     media_type = media_type_map.get(ext, "image/jpeg")
 
-    message = _client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_data}},
-                    {"type": "text", "text": "이 패션 상품 이미지를 분석해 주세요."},
-                ],
-            }
-        ],
-    )
+    try:
+        message = _client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=512,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_data}},
+                        {"type": "text", "text": "이 패션 상품 이미지를 분석해 주세요."},
+                    ],
+                }
+            ],
+        )
+    except anthropic.APIError as e:
+        # 크레딧 부족 등 API 실패 시 파이프라인을 죽이지 않고 스텁으로 강등
+        return {**_STUB_RESULT, "reason": str(e)}
 
     raw = message.content[0].text.strip()
     try:
