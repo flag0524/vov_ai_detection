@@ -11,3 +11,5 @@ aiofiles==24.1.0
 python-dotenv==1.0.1
 scikit-image==0.26.0
 opencv-python-headless==4.13.0.92
+httpx==0.28.1
+pytest==9.1.1
