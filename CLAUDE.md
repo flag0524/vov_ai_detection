@@ -51,7 +51,7 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 - Vector DB: pgvector 예정 (Phase 2+, 검수 임베딩용)
 - 품질 검증: `backend/app/services/quality.py` — scikit-image 기반 SSIM 실계산 (얼굴 유사도는 임베딩 입력 시에만 계산)
 - 비동기: Celery/RQ + Redis Job Queue — `workers/`, `backend/app/services/queue.py` (패키지만 설치, 실연결 보류 — 이 머신에 redis-server/WSL 인프라 없음, 현재는 동기 처리)
-- Agents: `agents/` — Agent 1(상품분석)/2(프롬프트)/5(SNS)는 Anthropic API 실동작 + 스텁 fallback, Agent 3(Soul ID)/4(영상)는 Higgsfield MCP 인증 대기로 스텁 fallback만 동작 (`higgsfield-soul-id`/`higgsfield-generate` 실호출은 TODO)
+- Agents: `agents/` — Agent 1(상품분석)/2(프롬프트)/5(SNS)는 Anthropic API 실동작 + 스텁 fallback. Agent 3(이미지)/4(영상)는 `agents/higgsfield_client.py`를 통해 Higgsfield Platform REST API 실호출 (`higgsfield-ai/soul/standard`, `higgsfield-ai/dop/preview`) — key/secret은 `backend/.env`, 크레딧 부족 등 실패 시 스텁 강등. Soul Character 학습 API는 미공개라 `create_soul_id()`만 스텁 유지
 
 ## 불변 제약 (생성 단계의 게이트)
 
@@ -68,5 +68,6 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 ## 빌드/테스트
 
 - Backend 실행: `backend/.venv` 가상환경 사용, `backend/main.py`가 FastAPI 엔트리포인트.
+- 테스트: `cd backend && ./.venv/Scripts/python.exe -m pytest tests/` — tests.md의 Phase별 기준을 코드로 고정한 스위트.
 - 검증 기준은 Phase별로 [docs/tests.md](docs/tests.md)에 정의되어 있으며, 각 Phase 완료 시 이를 충족해야 다음 Phase로 진행한다.
 - Frontend/Celery/Redis 등 미도입 스택은 도입 시 이 절을 갱신할 것.

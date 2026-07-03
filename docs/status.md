@@ -48,6 +48,22 @@
 - 사용자가 claude.ai Higgsfield 커넥터 인증 완료 → Agent 3/4의 `NotImplementedError` 부분을 실제 MCP 호출로 구현 → Phase 2/3 실이미지 기준 SSIM/얼굴 유사도 게이트 재검증, Phase 6 재생성 루프도 실생성물 기준 재검증
 - 실 서비스 스케일 시점에 Redis(WSL 또는 Memurai) 도입 → `queue.py`를 실제 job 라우팅에 연결
 
+## Higgsfield REST 실연동 (2026-07-03)
+
+### 완료된 것
+- 사용자로부터 Higgsfield API key + secret 수령 → `backend/.env` 저장 (gitignore 대상)
+- **인증 검증 성공**: `Authorization: Key {key}:{secret}` 형식으로 `platform.higgsfield.ai` 호출 시 401→403 전환 확인 (자격증명 유효)
+- `agents/higgsfield_client.py` 신규: submit→poll 패턴 공용 REST 클라이언트
+- Agent 3 `generate_image()`: `higgsfield-ai/soul/standard` 실호출로 전환
+- Agent 4 `generate_video()`: `higgsfield-ai/dop/preview` (image-to-video) 실호출로 전환, camera_motion→프롬프트 매핑
+- API 실패(크레딧 부족 등) 시 파이프라인을 죽이지 않고 스텁으로 강등하며 `reason`에 사유 기록 — 실검증 완료 (`403 not_enough_credits` → stub 강등 확인)
+- pytest 자동 테스트 스위트 신설 (`backend/tests/`, 16건 전부 통과): tests.md의 Phase 0~6 스텁 검증 기준을 코드로 고정
+
+### 현재 블로커
+1. **Higgsfield 크레딧 부족** (`not_enough_credits`) — 계정에 크레딧 충전 필요. 충전 즉시 코드 변경 없이 실생성 동작
+2. **Soul Character 학습 API 미공개** — Platform API 공개 문서에 text2image(`soul/standard`)만 존재. `create_soul_id()`는 스텁 유지, 학습 API 공개 시 해당 함수만 교체
+3. **ANTHROPIC_API_KEY 미설정** — Agent 1/2/5는 여전히 스텁 fallback
+
 ### 세션 종료 시점 확정 의사결정 (2026-07-02, 사용자 승인)
 
 Phase 1~6의 실생성물 기준 완료는 다음 두 가지 외부 인증에 막혀 이 세션 내에서 더 진행할 수 없다. 사용자에게 직접 확인해 아래로 확정했다.
@@ -93,3 +109,4 @@ Phase 1~6의 실생성물 기준 완료는 다음 두 가지 외부 인증에 �
 | 2026-07-01 | Phase 5: Next.js 프론트엔드 스캐폴딩 + 업로드/생성/결과 화면 + CORS 연동 검증 완료 |
 | 2026-07-01 | Phase 6: 재생성 루프(`run_with_quality_gate`) + 처리시간 측정 구현, 단위 테스트로 재시도/실패 케이스 검증 |
 | 2026-07-02 | 세션 종료 시점 확정: ANTHROPIC_API_KEY 미설정 상태로 스텁 모드 검증까지만 진행, Higgsfield MCP는 사용자 OAuth 인증 후 다음 세션에서 재개하기로 결정 |
+| 2026-07-03 | pytest 스위트 16건 구축·통과. 사용자 제공 Higgsfield key+secret으로 REST 실연동 코드 완성 (Agent 3/4), 인증 검증 성공, 크레딧 부족(`not_enough_credits`)으로 실생성만 대기 |
