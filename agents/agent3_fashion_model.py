@@ -34,7 +34,9 @@ def generate_image(prompt: str, soul_reference_id: str, product_image_path: str,
             SOUL_IMAGE_MODEL,
             {
                 "prompt": prompt,
-                "aspect_ratio": "3:4",
+                # 릴스/스토리 규격(9:16) — 영상(DoP)이 입력 이미지 비율을 따라가므로
+                # 이미지 단계에서 9:16으로 생성해야 tests.md Phase 3 규격 충족
+                "aspect_ratio": "9:16",
                 "resolution": "720p",
             },
         )

@@ -105,7 +105,8 @@ def test_sns_template_contains_brand_hashtag():
     assert "#제이블랑" in result["hashtags"]
     assert len(result["hashtags"]) >= 5
     assert "테스트 원피스" in result["caption"]
-    assert result["ad_copy"]
+    # tests.md Phase 4: 광고 카피 채널 길이 제한 (PRD: 20자 이내)
+    assert 0 < len(result["ad_copy"]) <= 20
 
 
 def test_upload_with_product_metadata(client):
