@@ -36,12 +36,12 @@ def test_ssim_different_images_below_threshold(image_pair):
     assert score < quality.PRODUCT_SSIM_THRESHOLD
 
 
-def test_validate_generation_requeues_on_low_ssim(image_pair):
-    """불변 제약: 기준 미달 산출물은 action=requeue"""
+def test_validate_generation_flags_manual_review_on_low_ssim(image_pair):
+    """ADR-011: 기준 미달 산출물은 action=manual_review (정보성 게이트)"""
     orig, _, diff = image_pair
     result = quality.validate_generation(orig, diff)
     assert result["overall_pass"] is False
-    assert result["action"] == "requeue"
+    assert result["action"] == "manual_review"
 
 
 def test_face_similarity_gate():
@@ -86,7 +86,7 @@ def test_quality_gate_fails_after_max_attempts():
         )
     assert attempts == 2
     assert q["overall_pass"] is False
-    assert q["action"] == "requeue"
+    assert q["action"] == "manual_review"
 
 
 def test_quality_gate_passes_first_try():

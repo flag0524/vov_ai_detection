@@ -57,13 +57,16 @@ def validate_generation(original_path: str, generated_path: str, face_embeddings
 
     overall_pass = product_pass and face_pass
 
+    # 2026-07-05 사용자 결정: SSIM은 하드 게이트가 아닌 정보성 점수.
+    # 미달 시 자동 재생성/failed 대신 manual_review로 표시해 사람이 검수한다.
+    # (상품 단독 사진 vs 착용 화보 전체 비교라 실측 0.80 도달 불가 — ADR-011)
     return {
         "ssim_score": round(ssim_score, 4),
         "product_pass": product_pass,
         "face_similarity": round(face_score, 4) if face_score is not None else None,
         "face_pass": face_pass,
         "overall_pass": overall_pass,
-        "action": "approved" if overall_pass else "requeue",
+        "action": "approved" if overall_pass else "manual_review",
     }
 
 

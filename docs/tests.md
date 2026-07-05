@@ -44,8 +44,8 @@
 | --- | --- | --- |
 | 프롬프트 자동 생성 | Agent 2 호출, 상품 메타 입력 | 완성된 영문 프롬프트 반환 |
 | 이미지 생성 | `POST /ai/image/generate` 비동기 호출 | job 완료 후 이미지 URL 반환 |
-| 상품 원본 유지율 | SSIM(원본 vs. 생성) | SSIM ≥ 0.80 |
-| 재생성 큐 | 유지율 미달 케이스 시뮬레이션 | 자동 재생성 큐 진입 확인 |
+| 상품 원본 유지율 | SSIM(원본 vs. 생성물 다운로드) | **정보성 점수 기록 + 미달 시 manual_review 표시 (ADR-011, 2026-07-05 개정)** — 실측상 전체 화보 비교로는 0.80 도달 불가. 정밀 게이트(상품 영역 비교)는 후속 |
+| 검수 플래그 | 유지율 미달 케이스 | `qa_status: manual_review`로 기록 확인 (자동 재생성 폐기) |
 
 ---
 
@@ -84,7 +84,7 @@
 | 검증 항목 | 방법 | 합격 기준 | 결과 (2026-07-01) |
 | --- | --- | --- | --- |
 | 자동 평가 루프 | 생성 완료 후 자동 점수 계산 | Image/Video Quality Score 자동 기록 | ✅ `GenerationJob.result_refs.quality`에 SSIM/얼굴유사도 자동 기록 확인 |
-| 재생성 루프 | 기준 미달 케이스 주입 | 재생성 큐 자동 진입 → 재시도 후 기준 통과 | ✅ mock으로 SSIM 0.5(미달) 2회 후 0.95(통과) 주입 → attempts=3, overall_pass=True 확인. max_attempts 소진 시 attempts=2, overall_pass=False(job status=failed)도 확인 |
+| 재생성 루프 | 기준 미달 케이스 주입 | ~~재생성 큐 자동 진입~~ → **ADR-011로 개정: 미달 시 manual_review 표시** | ✅ `run_with_quality_gate()` 루프 자체는 단위 테스트로 검증 유지 (정밀 게이트 도입 시 재사용). 파이프라인은 1회 생성 + qa_status 기록으로 전환 |
 | 처리 시간 측정 | E2E 타이밍 로그 | 상품 1건 → 전체 산출물 시간 측정값 기록 | ✅ `processing_time_sec` 응답 필드로 기록 확인 |
 
 ---

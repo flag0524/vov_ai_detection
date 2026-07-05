@@ -11,9 +11,29 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.models.base import get_db
 from app.models.entities import Product, AIModel, GenerationJob, Content
-from app.services.quality import run_with_quality_gate
+from app.services.quality import validate_generation
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
+
+RESULTS_DIR = os.path.join(os.getenv("STORAGE_LOCAL_DIR", "../storage"), "results")
+
+
+def _download_generated(image_url: str, job_key: str) -> str | None:
+    """실생성 이미지를 storage/results/에 내려받아 로컬 경로를 반환한다.
+    스텁 URL이거나 다운로드 실패 시 None (SSIM은 원본끼리 비교로 폴백)."""
+    if image_url.startswith("https://stub."):
+        return None
+    try:
+        import httpx
+        resp = httpx.get(image_url, timeout=60)
+        resp.raise_for_status()
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        path = os.path.join(RESULTS_DIR, f"{job_key}.jpg")
+        with open(path, "wb") as f:
+            f.write(resp.content)
+        return path
+    except Exception:
+        return None
 
 
 class PipelineRequest(BaseModel):
@@ -59,12 +79,17 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
 
     model_attrs = {"hair_style": ai_model.hair_style, "age": ai_model.age, "mood": ai_model.mood, "fashion_style": ai_model.fashion_style}
 
-    # Step 3: 프롬프트 + 이미지 생성 (품질 게이트 미달 시 최대 2회까지 자동 재생성)
+    # Step 3: 프롬프트 + 이미지 생성 (1회)
     prompt_result = generate_photoshoot_prompt(product_meta, model_attrs, req.background)
-    image_result, quality, attempts = run_with_quality_gate(
-        generate_fn=lambda: generate_image(prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id),
-        original_path=image_path,
-    )
+    image_result = generate_image(prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id)
+
+    # Step 4: 품질 검증 — SSIM은 정보성 점수 (ADR-011, 2026-07-05 사용자 결정)
+    # 실생성물은 다운로드해 원본과 실제 비교하고, 미달 시 manual_review로 표시만 한다
+    # (자동 재생성/failed 없음 — 구도 차이로 하드 게이트가 항상 탈락해 크레딧만 소모).
+    job_key = str(uuid.uuid4())
+    generated_path = _download_generated(image_result["image_url"], job_key)
+    quality = validate_generation(image_path, generated_path or image_path)
+    attempts = 1
 
     # Step 5: 영상 생성
     video_result = generate_video(image_url=image_result["image_url"])
@@ -76,10 +101,16 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
 
     # DB 저장
     img_job = GenerationJob(
-        job_id=str(uuid.uuid4()), type="image", product_id=product.product_id,
-        model_id=ai_model.model_id, status="done" if quality["overall_pass"] else "failed",
+        job_id=job_key, type="image", product_id=product.product_id,
+        model_id=ai_model.model_id, status="done",
         params={"prompt": prompt_result["prompt"]},
-        result_refs={"image_url": image_result["image_url"], "quality": quality, "attempts": attempts},
+        result_refs={
+            "image_url": image_result["image_url"],
+            "local_path": generated_path,
+            "quality": quality,
+            "qa_status": quality["action"],  # approved | manual_review (ADR-011)
+            "attempts": attempts,
+        },
     )
     vid_job = GenerationJob(
         job_id=str(uuid.uuid4()), type="video", product_id=product.product_id,
