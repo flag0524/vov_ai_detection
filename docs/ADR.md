@@ -1,0 +1,86 @@
+# ADR — Architecture Decision Records
+
+- 문서 버전: v1.0
+- 작성일: 2026-07-05
+- 목적: 프로젝트 진행 중 확정된 아키텍처 의사결정을 결정 단위로 기록한다. 각 결정의 배경과 근거를 남겨, 이후 세션(사람 또는 에이전트)이 같은 논의를 반복하지 않도록 한다.
+
+상태 표기: ✅ 채택 | 🔄 부분 채택(조건부) | ⏸ 보류 | ❌ 폐기
+
+---
+
+## ADR-001. 이미지·영상 생성 인프라 = Higgsfield (자체 추론 없음) ✅
+
+- **일자**: 2026-06-30 (TRD v2.0에서 확정)
+- **컨텍스트**: 자체 Diffusion / IP Adapter / ControlNet 추론 인프라를 구축할지, 외부 생성 API를 쓸지 결정 필요. 자체 인프라는 GPU 비용·운영 부담이 크고, 얼굴 일관성 유지를 위한 파인튜닝 파이프라인도 직접 만들어야 한다.
+- **결정**: 이미지·영상 생성은 전부 Higgsfield로 처리한다. 자체 추론 인프라는 두지 않는다.
+- **결과**: GPU 인프라 비용 0. 대신 Higgsfield 크레딧 비용과 외부 API 의존(가용성·기능 제약)이 생김. 상품 원본 보존은 Higgsfield reference 제어 + 생성 후 SSIM 검수로 보완.
+
+## ADR-002. 호출 경로 = 에이전트가 생성 API 직접 호출, 백엔드는 오케스트레이션만 ✅
+
+- **일자**: 2026-06-30
+- **컨텍스트**: FastAPI 백엔드가 Higgsfield를 직접 부를지, 에이전트 레이어(`agents/`)가 부를지.
+- **결정**: 백엔드는 작업(job) 위임·상태 관리·품질 게이트만 담당하고, 생성 호출은 Agent 3/4가 직접 수행한다.
+- **결과**: 백엔드와 생성 로직이 분리되어 에이전트를 독립적으로 교체·테스트 가능. `backend/app/api/*`는 `agents/*` 함수를 import해 호출하는 구조.
+
+## ADR-003. 모델 얼굴 일관성 = Soul ID (face_embedding 개념 폐기) ✅
+
+- **일자**: 2026-06-30 (TRD v2.0)
+- **컨텍스트**: 구 설계는 얼굴 임베딩(`face_embedding` VECTOR)을 저장해 매 생성마다 identity reference로 주입하는 방식이었다. Higgsfield는 Soul Character를 1회 학습하면 `soul_reference_id`로 동일 인물을 재생성하는 기능을 제공한다.
+- **결정**: 모델당 1회 Soul Character를 학습해 `soul_reference_id`를 저장하고 모든 생성에 주입한다. 구 `face_embedding` 저장 개념은 폐기하되, 생성물 동일성 점수 계산용 검수 임베딩은 별도 보관한다.
+- **결과**: `ai_models.soul_reference_id` 컬럼으로 구현. 단, Soul Character 학습 API가 미공개라 `create_soul_id()`는 스텁 유지 중 (ADR-008 참조).
+
+## ADR-004. Higgsfield 연동 방식 = MCP가 아닌 Platform REST API 🔄
+
+- **일자**: 2026-07-04
+- **컨텍스트**: 당초 TRD는 "Higgsfield MCP" 연동을 전제했다. 그러나 백엔드 파이프라인(Python)이 claude.ai 커넥터 MCP를 직접 호출할 수 없고, 사용자가 Platform API key/secret을 발급받으면서 REST 경로가 열렸다.
+- **결정**: Agent 3/4는 `agents/higgsfield_client.py`(submit → poll 패턴)를 통해 Platform REST API(`platform.higgsfield.ai`)를 호출한다. 이미지는 `higgsfield-ai/soul/standard`, 영상은 `higgsfield-ai/dop/preview`. 인증은 `Authorization: Key {key}:{secret}` 헤더, 자격증명은 `backend/.env`.
+- **결과**: 백엔드 파이프라인이 사람 개입 없이 생성 호출 가능. claude.ai Higgsfield MCP는 대화형 세션의 보조 수단으로 병행 가능. "MCP 직접 호출"이라는 문서 표현은 "Higgsfield API 직접 호출"로 일반화됨.
+
+## ADR-005. 외부 API 실패 시 스텁 강등 (Graceful Degradation) ✅
+
+- **일자**: 2026-07-01 (Agent 3/4), 2026-07-03 (Agent 1/2/5로 확대)
+- **컨텍스트**: 파이프라인은 외부 API 2종(Anthropic, Higgsfield)에 의존한다. 키 미설정·크레딧 부족·일시 장애 시 파이프라인 전체가 500으로 죽으면 E2E 개발·검증이 불가능하다.
+- **결정**: 모든 에이전트는 (1) 자격증명 미설정 또는 (2) API 호출 실패 시 예외를 전파하지 않고 스텁 결과로 강등한다. 강등 결과에는 반드시 `stub: true`와 실패 사유(`reason`)를 포함해 실생성물로 오인되지 않게 한다.
+- **결과**: 크레딧 0 상태에서도 E2E 파이프라인이 완주 가능. 응답의 `stubs` 필드로 어느 단계가 스텁인지 추적 가능. 크레딧 충전 시 코드 변경 없이 실생성으로 전환된다.
+
+## ADR-006. DB = SQLite(개발) → PostgreSQL(운영), Storage = 로컬 → S3 ✅
+
+- **일자**: 2026-06-30
+- **컨텍스트**: 개발 머신에 Docker가 없어 PostgreSQL 컨테이너 운용이 어렵고, 초기엔 단일 사용자 개발이라 동시성 요구가 낮다.
+- **결정**: 개발은 SQLite(`backend/jblanc.db`) + 로컬 파일시스템(`storage/`), 운영 전환 시 PostgreSQL + S3 호환 스토리지로 이행한다. ORM(SQLAlchemy)을 통해 DB 교체 비용을 최소화한다.
+- **결과**: `DATABASE_URL` 환경변수 하나로 전환 가능. pgvector(검수 임베딩)는 PostgreSQL 전환 시점에 도입.
+
+## ADR-007. Redis/Celery 비동기 큐 보류, 현재는 동기 처리 ⏸
+
+- **일자**: 2026-07-01
+- **컨텍스트**: TRD는 Celery/RQ + Redis job queue를 전제하나, 개발 머신에 redis-server·WSL·choco 등 설치 인프라가 전혀 없어 도입 자체가 큰 환경 변경이다. 현재 트래픽(단일 사용자, 상품 단건 처리)에서는 동기 처리로 충분하다.
+- **결정**: Redis 도입을 보류하고 `/pipeline/run`은 동기 실행한다. `backend/app/services/queue.py`(RQ enqueue 헬퍼)는 작성해 두되 연결하지 않는다. 스케일 필요 시점에 WSL 또는 Memurai로 도입한다.
+- **결과**: 파이프라인 1건이 HTTP 요청 시간 안에 완료되어야 하는 제약이 생김 (현재 스텁 기준 수 초, 실생성 기준 폴링 포함 수 분 예상 — 실연동 후 타임아웃 재평가 필요).
+
+## ADR-008. Soul Character 학습은 스텁 유지 (학습 API 미공개) ⏸
+
+- **일자**: 2026-07-04
+- **컨텍스트**: Higgsfield Platform API 공개 문서에는 text2image(`soul/standard`) 계열만 있고, Soul Character를 새로 학습시키는 API는 미공개다.
+- **결정**: `create_soul_id()`는 스텁 ID(`STUB_SOUL_*`)를 반환하도록 유지하고, 학습 API가 공개되면 이 함수만 교체한다. 이미지 생성은 Soul ID 없이도 `soul/standard` 모델의 기본 인물 생성으로 진행 가능.
+- **결과**: "동일 모델 얼굴 고정" 요구(PRD FR-2)는 학습 API 공개 전까지 완전 충족 불가. 얼굴 일관성 게이트는 검수 임베딩 입력 시에만 계산되는 조건부 게이트로 동작.
+
+## ADR-009. 품질 게이트 = SSIM 실계산 + 자동 재생성 루프 (최대 2회) ✅
+
+- **일자**: 2026-07-01
+- **컨텍스트**: 불변 제약 "상품 원본 절대 변경 금지"를 코드 레벨에서 강제해야 한다. 기준 미달 산출물이 그대로 배포되는 것을 막는 장치 필요.
+- **결정**: scikit-image 기반 SSIM(임계 0.80)과 얼굴 임베딩 코사인 유사도(임계 0.85)를 `quality.py`에서 계산하고, `run_with_quality_gate()`가 미달 시 최대 2회 자동 재생성한다. 소진 시 job을 `failed`로 기록하고 배포하지 않는다.
+- **결과**: pytest로 재시도·소진·통과 시나리오 검증 완료. 스텁 모드에서는 생성물=원본이라 항상 통과하므로, 실생성물 기준 임계값 튜닝은 Higgsfield 크레딧 충전 후 과제로 남음.
+
+## ADR-010. Agent 1/2/5 = Anthropic API (claude-sonnet-4-6) ✅
+
+- **일자**: 2026-07-01
+- **컨텍스트**: 상품 이미지 분석(Vision), 생성 프롬프트 작성, SNS 카피 작성은 LLM 작업이다. 별도 Vision 모델 호스팅 없이 처리할 방법 필요.
+- **결정**: 세 에이전트 모두 Anthropic Messages API(`claude-sonnet-4-6`)를 사용한다. 응답은 JSON 강제 프롬프트로 받고, 파싱 실패 시 원문을 `parse_error` 플래그와 함께 반환한다.
+- **결과**: 단일 API 키로 3개 에이전트 운용. 크레딧 부족 시 ADR-005의 스텁 강등이 적용된다.
+
+---
+
+## 기록 규칙
+
+- 새 결정이 기존 결정을 뒤집으면 기존 항목을 ❌ 폐기로 바꾸고 새 ADR에서 `(ADR-XXX 대체)`를 명시한다.
+- 결정 전 반드시 사용자에게 질문한다는 프로젝트 규칙(CLAUDE.md)에 따라, 각 ADR은 사용자 승인 시점의 날짜를 기록한다.
