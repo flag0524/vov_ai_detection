@@ -25,12 +25,18 @@ def create_content(req: ContentCreateRequest, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="product not found")
 
-    from agents.agent1_product_analyzer import analyze_product_image
     from agents.agent5_marketing import generate_sns_content
 
-    product_meta = analyze_product_image(product.image_ref) if os.path.exists(product.image_ref or "") else {
-        "product_name": product.name,
-        "category": "패션",
+    # 상품 정보는 업로드 시 입력값 사용 (ADR-012, Vision 분석 폐기)
+    product_meta = {
+        k: v
+        for k, v in {
+            "product_name": product.name,
+            "category": product.category,
+            "color": product.color,
+            "style": product.style,
+        }.items()
+        if v
     }
 
     sns_result = generate_sns_content(product_meta, channel=req.channel)

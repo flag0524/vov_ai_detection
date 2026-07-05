@@ -96,15 +96,38 @@ def test_pipeline_run_404_for_missing_product(client):
     assert resp.status_code == 404
 
 
-# --- Phase 4: SNS 콘텐츠 (스텁 모드) ---
+# --- Phase 4: SNS 콘텐츠 (규칙 기반 템플릿, ADR-012) ---
 
-def test_sns_stub_contains_brand_hashtag():
-    """tests.md Phase 4: 해시태그에 #제이블랑 포함 (스텁 fallback 기준)"""
+def test_sns_template_contains_brand_hashtag():
+    """tests.md Phase 4: 해시태그 #제이블랑 포함 + 관련 태그 5개 이상"""
     from agents.agent5_marketing import generate_sns_content
-    result = generate_sns_content({"product_name": "테스트 원피스"})
-    assert result.get("stub") is True
+    result = generate_sns_content({"product_name": "테스트 원피스", "category": "원피스", "color": "블랙"})
     assert "#제이블랑" in result["hashtags"]
-    assert result["caption"]
+    assert len(result["hashtags"]) >= 5
+    assert "테스트 원피스" in result["caption"]
+    assert result["ad_copy"]
+
+
+def test_upload_with_product_metadata(client):
+    """ADR-012: 업로드 시 입력한 상품 정보가 저장되고 파이프라인 프롬프트에 반영"""
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), color=(30, 30, 60)).save(buf, format="PNG")
+    buf.seek(0)
+    resp = client.post(
+        "/product/upload",
+        files={"file": ("navy.png", buf, "image/png")},
+        data={"name": "네이비 트위드 재킷", "category": "재킷", "color": "네이비", "style": "럭셔리"},
+    )
+    assert resp.status_code == 200
+    product_id = resp.json()["product_id"]
+
+    result = client.post("/pipeline/run", json={"product_id": product_id}).json()
+    # 입력한 상품 정보가 생성 프롬프트에 반영됐는지 확인
+    assert "네이비" in result["prompt"]
+    assert "재킷" in result["prompt"]
+    assert "네이비 트위드 재킷" in result["sns"]["caption"]
 
 
 # --- Phase 3: 영상 생성 파라미터 검증 ---

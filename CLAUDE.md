@@ -37,13 +37,15 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 
 ### MCP Agent ↔ Higgsfield 기능 매핑
 
-| Agent | 역할 | Higgsfield 호출 |
+| Agent | 역할 | 구현 방식 |
 | --- | --- | --- |
-| Agent 1 상품 분석 | 카테고리·속성 추출 | (Vision, 미사용) |
-| Agent 2 Prompt Engineer | 프롬프트 자동 작성 | — |
-| Agent 3 Fashion Model | 모델 학습·이미지 생성 | `higgsfield-soul-id`, `higgsfield-generate`, `higgsfield-product-photoshoot` |
-| Agent 4 Video Creator | 이미지→영상 | `higgsfield-generate` (image-to-video) |
-| Agent 5 Marketing | 문구·해시태그·카피 | — |
+| ~~Agent 1 상품 분석~~ | **폐기 (ADR-012)** — 상품 정보는 업로드 시 담당자가 직접 입력 | — |
+| Agent 2 Prompt Engineer | 프롬프트 조립 | 규칙 기반 템플릿 (외부 API 없음, ADR-012) |
+| Agent 3 Fashion Model | 모델 학습·이미지 생성 | Higgsfield `soul/standard` REST (Soul 학습 API는 미공개, 스텁) |
+| Agent 4 Video Creator | 이미지→영상 | Higgsfield `dop/standard` REST (image-to-video) |
+| Agent 5 Marketing | 문구·해시태그·카피 | 규칙 기반 템플릿 (외부 API 없음, ADR-012) |
+
+**Anthropic API는 사용하지 않는다 (2026-07-05 사용자 확정, ADR-012).** `anthropic` 패키지도 제거됨.
 
 ### 스택 / 디렉터리 현황
 
@@ -54,7 +56,7 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 - Vector DB: pgvector 예정 (Phase 2+, 검수 임베딩용)
 - 품질 검증: `backend/app/services/quality.py` — scikit-image 기반 SSIM 실계산 (얼굴 유사도는 임베딩 입력 시에만 계산)
 - 비동기: Celery/RQ + Redis Job Queue — `workers/`, `backend/app/services/queue.py` (패키지만 설치, 실연결 보류 — 이 머신에 redis-server/WSL 인프라 없음, 현재는 동기 처리)
-- Agents: `agents/` — Agent 1(상품분석)/2(프롬프트)/5(SNS)는 Anthropic API 실동작 + 스텁 fallback. Agent 3(이미지)/4(영상)는 `agents/higgsfield_client.py`를 통해 Higgsfield Platform REST API 실호출 (`higgsfield-ai/soul/standard`, `higgsfield-ai/dop/preview`) — key/secret은 `backend/.env`, 크레딧 부족 등 실패 시 스텁 강등. Soul Character 학습 API는 미공개라 `create_soul_id()`만 스텁 유지
+- Agents: `agents/` — Agent 2(프롬프트)/5(SNS)는 규칙 기반 템플릿(외부 API 없음, ADR-012). Agent 3(이미지)/4(영상)는 `agents/higgsfield_client.py`를 통해 Higgsfield Platform REST API 실호출 (`higgsfield-ai/soul/standard`, `higgsfield-ai/dop/standard`) — key/secret은 `backend/.env`, 크레딧 부족 등 실패 시 스텁 강등. Soul Character 학습 API는 미공개라 `create_soul_id()`만 스텁 유지. Agent 1(Vision 상품분석)은 폐기 — 상품 정보는 업로드 폼으로 직접 입력
 
 ## 불변 제약 (생성 단계의 게이트)
 

@@ -72,11 +72,21 @@ def generate_image(req: ImageGenerateRequest, db: Session = Depends(get_db)):
     if not ai_model:
         raise HTTPException(status_code=404, detail="model not found")
 
-    from agents.agent1_product_analyzer import analyze_product_image
     from agents.agent2_prompt_engineer import generate_photoshoot_prompt
     from agents.agent3_fashion_model import generate_image as hf_generate
 
-    product_meta = analyze_product_image(product.image_ref) if os.path.exists(product.image_ref or "") else {}
+    # 상품 정보는 업로드 시 입력값 사용 (ADR-012, Vision 분석 폐기)
+    product_meta = {
+        k: v
+        for k, v in {
+            "product_name": product.name,
+            "category": product.category,
+            "color": product.color,
+            "material": product.material,
+            "style": product.style,
+        }.items()
+        if v
+    }
 
     model_attrs = {
         "hair_style": ai_model.hair_style,

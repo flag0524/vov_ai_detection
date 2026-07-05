@@ -1,9 +1,4 @@
-# Agent 2: 상품 메타데이터와 모델 속성으로 Higgsfield 생성 프롬프트를 자동 작성
-import os
-import anthropic
-
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+# Agent 2: 상품 정보와 모델 속성으로 Higgsfield 생성 프롬프트를 규칙 기반 템플릿으로 작성 (ADR-012)
 
 # PRD FR-7 / TRD §5 — 동작·표정 자연스러움(Naturalness) 지시어 (이미지)
 NATURALNESS_PROMPT = (
@@ -20,65 +15,45 @@ NATURALNESS_NEGATIVE = (
     "unnatural neck angle, uncanny valley"
 )
 
-SYSTEM_PROMPT = f"""당신은 럭셔리 패션 화보 프롬프트 전문가입니다.
-입력된 상품 정보와 모델 정보를 바탕으로 Higgsfield AI 이미지 생성용 영문 프롬프트를 작성하세요.
-
-규칙:
-- 영문으로 작성
-- 상품 원본(디자인·색상·패턴·로고)을 반드시 보존하도록 명시
-- 모델 Soul ID 일관성을 위해 모델 속성을 프롬프트에 고정 토큰으로 포함
-- 럭셔리 패션 매거진 화보 수준 (Vogue, Harper's Bazaar 스타일)
-- 배경·조명·카메라 앵글 지정
-- 자연스러움 지시어를 prompt에 반드시 포함: {NATURALNESS_PROMPT}
-- negative_prompt에 다음 항목을 반드시 포함: {NATURALNESS_NEGATIVE}
-- 250 토큰 이내
-
-JSON으로만 응답:
-{{"prompt": "...", "negative_prompt": "..."}}"""
+# TRD §5 — 상품 원본 보존 + 품질 공통 지시어
+_BASE_NEGATIVE = (
+    "different face, identity change, bad anatomy, extra fingers, unnatural body, "
+    "plastic skin, AI generated look, distorted clothing, wrong product details, "
+    "altered product design, distorted logo"
+)
 
 
 def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background: str = "Seoul luxury boutique") -> dict:
-    """상품 메타 + 모델 속성 → Higgsfield 생성 프롬프트 딕셔너리를 반환한다.
-    ANTHROPIC_API_KEY 미설정 또는 API 실패 시 스텁 프롬프트를 반환한다."""
-    def _stub(reason: str = "") -> dict:
-        result = {
-            "prompt": (
-                f"Luxury fashion editorial photo, {model_attrs}, preserving original "
-                f"product design/color/pattern/logo, background: {background}, "
-                f"Vogue style. {NATURALNESS_PROMPT}"
-            ),
-            "negative_prompt": f"altered product design, distorted logo, {NATURALNESS_NEGATIVE}",
-            "stub": True,
-        }
-        if reason:
-            result["reason"] = reason
-        return result
+    """상품 정보 + 모델 속성 → Higgsfield 생성 프롬프트를 템플릿으로 조립한다.
+    외부 API 없이 결정적으로 동작한다 (ADR-012: Anthropic 미사용)."""
+    product_parts = [
+        str(product_meta.get(k))
+        for k in ("color", "material", "category", "style")
+        if product_meta.get(k)
+    ]
+    product_desc = " ".join(product_parts) if product_parts else "fashion product"
+    product_name = product_meta.get("product_name") or product_meta.get("name") or ""
 
-    if _client is None:
-        return _stub()
+    model_parts = [
+        str(model_attrs.get(k))
+        for k in ("age", "hair_style", "mood", "fashion_style")
+        if model_attrs.get(k)
+    ]
+    model_desc = ", ".join(model_parts) if model_parts else "elegant Korean fashion model"
 
-    user_msg = f"""상품 정보:
-{product_meta}
+    prompt = (
+        f"Premium fashion campaign photo for JBLANC brand. "
+        f"A Korean female fashion model ({model_desc}) wearing {product_desc}"
+        f"{f' ({product_name})' if product_name else ''}, "
+        f"preserving the original product design, color, pattern and logo exactly. "
+        f"Scene: {background}. "
+        f"Lighting: soft natural studio lighting. "
+        f"Camera: 85mm fashion photography, high resolution, realistic texture. "
+        f"Style: luxury Korean fashion magazine editorial (Vogue style). "
+        f"{NATURALNESS_PROMPT}"
+    )
 
-모델 정보:
-{model_attrs}
-
-배경 선호: {background}"""
-
-    try:
-        message = _client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=400,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-    except anthropic.APIError as e:
-        # 크레딧 부족 등 API 실패 시 파이프라인을 죽이지 않고 스텁으로 강등
-        return _stub(reason=str(e))
-
-    import json
-    raw = message.content[0].text.strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"prompt": raw, "negative_prompt": ""}
+    return {
+        "prompt": prompt,
+        "negative_prompt": f"{_BASE_NEGATIVE}, {NATURALNESS_NEGATIVE}",
+    }

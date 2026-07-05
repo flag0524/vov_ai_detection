@@ -17,18 +17,13 @@ from app.models.base import Base, get_db
 
 @pytest.fixture(autouse=True)
 def force_stub_mode(monkeypatch):
-    """테스트가 유료 외부 API(Anthropic/Higgsfield)를 호출하지 않도록 강제 스텁 모드.
-    실생성 검증은 테스트 스위트가 아니라 의도된 수동 실행으로 수행한다."""
+    """테스트가 유료 외부 API(Higgsfield)를 호출하지 않도록 강제 스텁 모드.
+    실생성 검증은 테스트 스위트가 아니라 의도된 수동 실행으로 수행한다.
+    (Agent 2/5는 ADR-012로 규칙 기반 템플릿이 되어 외부 의존이 없다.)"""
     from agents import higgsfield_client as hf
-    import agents.agent1_product_analyzer as a1
-    import agents.agent2_prompt_engineer as a2
-    import agents.agent5_marketing as a5
 
     monkeypatch.setattr(hf, "API_KEY", "")
     monkeypatch.setattr(hf, "API_SECRET", "")
-    monkeypatch.setattr(a1, "_client", None)
-    monkeypatch.setattr(a2, "_client", None)
-    monkeypatch.setattr(a5, "_client", None)
 
 
 @pytest.fixture()

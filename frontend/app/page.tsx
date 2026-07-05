@@ -34,6 +34,15 @@ export default function Home() {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PipelineResult | null>(null);
+  // 상품 정보 직접 입력 (ADR-012 — Vision 자동 분석 대신 담당자 입력)
+  const [info, setInfo] = useState({
+    name: "",
+    category: "",
+    color: "",
+    material: "",
+    style: "",
+    target_customer: "",
+  });
 
   async function handleGenerate() {
     if (!file) return;
@@ -44,6 +53,9 @@ export default function Home() {
       setStage("uploading");
       const form = new FormData();
       form.append("file", file);
+      Object.entries(info).forEach(([key, value]) => {
+        if (value.trim()) form.append(key, value.trim());
+      });
       const uploadRes = await fetch(`${API_BASE}/product/upload`, {
         method: "POST",
         body: form,
@@ -87,6 +99,27 @@ export default function Home() {
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="text-sm"
           />
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ["name", "상품명 (예: 네이비 트위드 재킷)"],
+                ["category", "카테고리 (원피스/재킷/코트…)"],
+                ["color", "색상"],
+                ["material", "소재"],
+                ["style", "스타일 (럭셔리/캐주얼…)"],
+                ["target_customer", "타깃 고객"],
+              ] as const
+            ).map(([key, placeholder]) => (
+              <input
+                key={key}
+                type="text"
+                placeholder={placeholder}
+                value={info[key]}
+                onChange={(e) => setInfo({ ...info, [key]: e.target.value })}
+                className="rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+              />
+            ))}
+          </div>
           <button
             onClick={handleGenerate}
             disabled={!file || stage === "uploading" || stage === "generating"}

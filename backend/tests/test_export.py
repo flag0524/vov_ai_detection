@@ -43,7 +43,7 @@ def test_export_portrait_source(tmp_path):
 
 # --- B-1: Naturalness 프롬프트 내장 (PRD FR-7 / TRD §5·§6) ---
 
-def test_agent2_stub_prompt_includes_naturalness():
+def test_agent2_prompt_includes_naturalness():
     """이미지 프롬프트에 자연스러움 지시어·Negative Prompt 포함"""
     from agents.agent2_prompt_engineer import (
         generate_photoshoot_prompt, NATURALNESS_PROMPT, NATURALNESS_NEGATIVE,

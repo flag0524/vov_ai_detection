@@ -21,17 +21,16 @@
   └─ /pipeline/run  (E2E 오케스트레이션)  backend/app/api/pipeline.py
         │  함수 직접 호출 (동기, ADR-007)
         ▼
-[Agents]  agents/
-  ├─ agent1_product_analyzer.py   Anthropic Vision → 상품 메타 JSON
-  ├─ agent2_prompt_engineer.py    Anthropic → 화보 프롬프트 JSON
+[Agents]  agents/   (Agent 1은 ADR-012로 폐기 — 상품 정보는 업로드 폼 직접 입력)
+  ├─ agent2_prompt_engineer.py    규칙 기반 템플릿 → 화보 프롬프트 (외부 API 없음)
   ├─ agent3_fashion_model.py      Higgsfield soul/standard → 이미지
-  ├─ agent4_video_creator.py      Higgsfield dop/preview → 영상 (image-to-video)
-  ├─ agent5_marketing.py          Anthropic → 캡션/해시태그/광고카피
+  ├─ agent4_video_creator.py      Higgsfield dop/standard → 영상 (image-to-video)
+  ├─ agent5_marketing.py          규칙 기반 템플릿 → 캡션/해시태그/광고카피 (외부 API 없음)
   ├─ higgsfield_client.py         Platform REST 공용 클라이언트 (submit→poll)
   └─ orchestrator.py              백엔드 없이 단독 실행용 파이프라인 러너
         │
         ▼
-[External]  Anthropic API (claude-sonnet-4-6) · Higgsfield Platform API
+[External]  Higgsfield Platform API (유일한 외부 생성 의존)
 [Storage]   SQLite backend/jblanc.db · 로컬 storage/uploads, storage/results
 ```
 
@@ -138,16 +137,13 @@ TRD §7의 `/api/v1/*` 프리픽스 대신 리소스 직접 프리픽스를 사�
 
 호출부는 `stub` 플래그만 보고 실생성물 여부를 판단한다. 예외 전파로 파이프라인이 죽는 경로는 없다.
 
-### Agent 1 — 상품 분석
-- 입력: 이미지 경로 → base64 인코딩, 확장자별 media_type 매핑
-- 모델: `claude-sonnet-4-6`, max_tokens 512, JSON 강제 시스템 프롬프트
-- 출력: category/color/material/silhouette/season/style/target_customer
-- JSON 파싱 실패 시 `{raw, parse_error: true}` 반환 (죽지 않음)
+### ~~Agent 1 — 상품 분석~~ (ADR-012로 폐기)
+- Vision 자동 분석 대신 `POST /product/upload`의 Form 필드(name/category/color/material/style/target_customer)로 담당자가 직접 입력. Product 테이블에 저장되고 파이프라인이 그대로 사용
 
-### Agent 2 — 프롬프트 엔지니어
-- 입력: product_meta + model_attrs + background
-- 시스템 프롬프트에 원본 보존 지시·Vogue 스타일·200토큰 제한 내장
-- 출력: `{prompt, negative_prompt}`
+### Agent 2 — 프롬프트 엔지니어 (규칙 기반 템플릿, ADR-012)
+- 입력: product_meta(입력값) + model_attrs + background
+- 상품 서술·모델 서술·원본 보존 지시·Vogue 스타일·naturalness 지시어(FR-7)를 결정적으로 조립
+- 출력: `{prompt, negative_prompt}` — 외부 API 없음, 항상 동일 입력=동일 출력
 
 ### Agent 3 — 이미지 생성
 - `create_soul_id()`: 학습 API 미공개로 스텁 유지 (ADR-008)
@@ -157,9 +153,9 @@ TRD §7의 `/api/v1/*` 프리픽스 대신 리소스 직접 프리픽스를 사�
 - duration 5~15초 검증 (범위 밖 ValueError), aspect_ratio 9:16 고정
 - `higgsfield_client.generate("higgsfield-ai/dop/preview", {image_url, ...})` → video_url
 
-### Agent 5 — SNS 카피
-- 브랜드 톤(럭셔리·감각·여성) 시스템 프롬프트, `#제이블랑` 해시태그 보장
-- 출력: `{caption, hashtags[≥8], ad_copy}`
+### Agent 5 — SNS 카피 (규칙 기반 템플릿, ADR-012)
+- 상품명·카테고리·색상·스타일로 캡션 조립, 카테고리별 해시태그 매핑 + 기본 태그(`#제이블랑` 보장)
+- 출력: `{caption, hashtags[≥8], ad_copy}` — 외부 API 없음
 
 ### higgsfield_client — 공용 REST 클라이언트 (ADR-004)
 - `submit(model_id, payload)` → POST `platform.higgsfield.ai/{model_id}` → request_id
@@ -182,8 +178,7 @@ TRD §7의 `/api/v1/*` 프리픽스 대신 리소스 직접 프리픽스를 사�
 
 | 변수 | 용도 |
 |---|---|
-| ANTHROPIC_API_KEY | Agent 1/2/5 |
-| HIGGSFIELD_API_KEY / HIGGSFIELD_API_SECRET | Agent 3/4 (쌍으로 필요) |
+| HIGGSFIELD_API_KEY / HIGGSFIELD_API_SECRET | Agent 3/4 (쌍으로 필요) — 유일한 외부 API 자격증명 |
 | DATABASE_URL | 기본 `sqlite:///./jblanc.db`, 운영 시 PostgreSQL DSN |
 | STORAGE_LOCAL_DIR | 기본 `../storage` |
 | REDIS_URL | queue.py용 (현재 미사용, ADR-007) |

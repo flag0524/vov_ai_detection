@@ -50,15 +50,27 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="product not found")
 
-    from agents.agent1_product_analyzer import analyze_product_image
     from agents.agent2_prompt_engineer import generate_photoshoot_prompt
     from agents.agent3_fashion_model import create_soul_id, generate_image
     from agents.agent4_video_creator import generate_video
     from agents.agent5_marketing import generate_sns_content
 
-    # Step 1: 상품 분석
+    # Step 1: 상품 정보 — 업로드 시 담당자가 입력한 값 사용 (ADR-012, Vision 분석 폐기)
     image_path = product.image_ref or ""
-    product_meta = analyze_product_image(image_path) if os.path.exists(image_path) else {"product_name": product.name}
+    product_meta = {
+        k: v
+        for k, v in {
+            "product_name": product.name,
+            "category": product.category,
+            "color": product.color,
+            "material": product.material,
+            "silhouette": product.silhouette,
+            "season": product.season,
+            "style": product.style,
+            "target_customer": product.target_customer,
+        }.items()
+        if v
+    }
 
     # Step 2: 모델 (기존 모델 재사용 또는 신규 생성)
     ai_model = None
