@@ -103,7 +103,7 @@ export default function Home() {
           <section className="flex flex-col gap-6">
             {(result.stubs.image || result.stubs.video) && (
               <p className="rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                ⚠ Higgsfield MCP 미연동 상태 — 이미지/영상은 스텁 결과물입니다.
+                ⚠ 스텁 결과물 포함 — 외부 생성 API 미호출 (자격증명/크레딧 확인 필요)
               </p>
             )}
 
