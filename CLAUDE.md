@@ -13,6 +13,7 @@ JBLANC AI Fashion Marketing Automation System. 제이블랑(JBLANC) 패션 상�
 - [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) — 개발 로드맵. **v2.0: 실구현 현황 + 2트랙(실연동 재검증/기능 완성) 체계.**
 - [docs/ADR.md](docs/ADR.md) — 아키텍처 의사결정 기록 (ADR-001~010). 결정을 뒤집기 전 반드시 확인.
 - [docs/TDD.md](docs/TDD.md) — 실구현 기준 기술 설계서 (컴포넌트·스키마·API·게이트·테스트 설계).
+- [docs/SCREEN_DESIGN.md](docs/SCREEN_DESIGN.md) — 화면설계서 (SCR-001 구현 화면 + SCR-002~004 계획 화면, 와이어프레임·API 매핑).
 - [docs/plan.md](docs/plan.md) — Phase별 실행 계획 및 체크리스트.
 - [docs/status.md](docs/status.md) — 진행 현황(Phase 완료 여부·확정 의사결정). **작업 시작 전 항상 최신 상태 확인.**
 - [docs/tests.md](docs/tests.md) — Phase별 검증 기준.
