@@ -15,6 +15,22 @@ from main import app
 from app.models.base import Base, get_db
 
 
+@pytest.fixture(autouse=True)
+def force_stub_mode(monkeypatch):
+    """테스트가 유료 외부 API(Anthropic/Higgsfield)를 호출하지 않도록 강제 스텁 모드.
+    실생성 검증은 테스트 스위트가 아니라 의도된 수동 실행으로 수행한다."""
+    from agents import higgsfield_client as hf
+    import agents.agent1_product_analyzer as a1
+    import agents.agent2_prompt_engineer as a2
+    import agents.agent5_marketing as a5
+
+    monkeypatch.setattr(hf, "API_KEY", "")
+    monkeypatch.setattr(hf, "API_SECRET", "")
+    monkeypatch.setattr(a1, "_client", None)
+    monkeypatch.setattr(a2, "_client", None)
+    monkeypatch.setattr(a5, "_client", None)
+
+
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     """테스트마다 새 인메모리 DB와 임시 스토리지를 쓰는 TestClient."""

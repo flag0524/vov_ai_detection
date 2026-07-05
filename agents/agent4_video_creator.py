@@ -4,7 +4,8 @@ import uuid
 from agents import higgsfield_client as hf
 
 # Higgsfield 자체 DoP 모델 — 카메라 워킹 중심 image-to-video
-VIDEO_MODEL = "higgsfield-ai/dop/preview"
+# (유효 슬러그: lite | standard | turbo | */first-last-frame — 422 실측으로 확인)
+VIDEO_MODEL = "higgsfield-ai/dop/standard"
 
 # camera_motion 파라미터 → 영상 프롬프트 문구 매핑
 CAMERA_MOTION_PROMPTS = {
@@ -14,6 +15,21 @@ CAMERA_MOTION_PROMPTS = {
     "pan": "gentle horizontal pan across the scene",
     "static": "static camera, subtle natural motion only",
 }
+
+# PRD FR-7 / TRD §6 — 동작·표정 자연스러움(Naturalness) 지시어 (영상)
+NATURALNESS_MOTION_PROMPT = (
+    "natural human walking rhythm, realistic stride and arm swing, "
+    "natural hair movement, realistic clothing physics, smooth continuous "
+    "body motion, consistent natural expression across frames, "
+    "soft lifelike micro-expressions, no expression morphing"
+)
+
+# PRD FR-7 / TRD §6 — 영상 Negative Prompt
+NATURALNESS_MOTION_NEGATIVE = (
+    "robotic movement, jerky motion, unnatural gait, sliding feet, "
+    "frame jitter, face morphing, twitching face, expression flickering, "
+    "limb distortion, teleporting body parts, frozen expression"
+)
 
 
 def generate_video(image_url: str, duration_sec: int = 10, aspect_ratio: str = "9:16", camera_motion: str = "dolly_in") -> dict:
@@ -44,7 +60,8 @@ def generate_video(image_url: str, duration_sec: int = 10, aspect_ratio: str = "
             VIDEO_MODEL,
             {
                 "image_url": image_url,
-                "prompt": f"luxury fashion editorial reel, {motion_prompt}, natural elegant movement",
+                "prompt": f"luxury fashion editorial reel, {motion_prompt}, {NATURALNESS_MOTION_PROMPT}",
+                "negative_prompt": NATURALNESS_MOTION_NEGATIVE,
                 "duration": duration_sec,
             },
             timeout_sec=600,  # 영상은 이미지보다 오래 걸림
