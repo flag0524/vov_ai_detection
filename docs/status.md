@@ -154,6 +154,25 @@ Phase 1~6의 실생성물 기준 완료는 다음 두 가지 외부 인증에 �
 - tests.md Phase 5의 마지막 갭("실브라우저 클릭 미검증") 해소
 - 프론트 배너 문구를 실상에 맞게 수정 ("MCP 미연동" → "외부 생성 API 미호출")
 
+## 얼굴 고정 기술검증 성공 (2026-07-06, ADR-014 C-1 완료)
+
+### 확보된 API 경로 (전부 프로브로 실증)
+| 단계 | 엔드포인트 | 비고 |
+| --- | --- | --- |
+| 참조 등록 | `POST /v1/custom-references` `{"name", "input_images":[{"type":"image_url","image_url":…}]}` | 응답에 `id`(UUID), status: not_ready→in_progress→completed (~10분, 큐 대기 포함) |
+| 상태 조회 | `GET /v1/custom-references/{id}` | |
+| 얼굴 고정 생성 | `POST /higgsfield-ai/soul/character` `{"prompt", "custom_reference_id", "aspect_ratio", "resolution", "seed"?}` | `soul/reference`(스타일 참조 추정)도 동일 스키마 |
+
+### 실증 결과
+- 기존 실생성 모델 컷 1장을 `JBLANC_MODEL_CANDIDATE_A`로 등록 (id: `16204c19-3795-418c-9200-81f3b54b58dd`)
+- 동일 reference로 전혀 다른 2장면 생성: (A) 스튜디오+데님 베스트 (B) 도심 노을+가죽 재킷 — **육안 판정 동일 인물** (얼굴 구조·눈매·미소 일치, 9:16, naturalness 양호)
+- 결론: **MCP 구독 없이 Platform API 크레딧만으로 얼굴 동일성 달성 가능.** ADR-003의 Soul ID 개념은 `custom_reference_id`로 실현됨
+- 산출물: `storage/results/face_test_sceneA.jpg`, `face_test_sceneB.jpg`
+
+### 다음 단계 (ADR-014 순서)
+- C-2: 후보 모델 4~6장 생성(시드 변경) → 사장님 1명 선정 → canonical 등록
+- 이후 Agent 3를 `soul/character` + canonical reference로 전환
+
 ## 변경 이력
 
 | 날짜 | 내용 |
