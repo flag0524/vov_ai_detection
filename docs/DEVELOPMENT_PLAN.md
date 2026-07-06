@@ -57,7 +57,7 @@
 - B-1. Naturalness QA 1차 (PRD FR-7) — 프롬프트 레이어 선행: TRD §5/§6의 자연스러움 지시어·Negative Prompt를 Agent 2 템플릿에 내장 (실생성물 없이 가능)
 - B-2. Naturalness QA 2차 — 실생성물 확보 후: facial landmark/pose 기반 `validate_naturalness()` 구현, `naturalness_score` 컬럼 추가, 게이트 파이프라인에 연결 (임계 0.9/0.8, TRD §4)
 - B-3. 인스타 포맷 산출 — Feed 1080x1350 / Reel·Story 1080x1920 리사이즈·크롭 모듈
-- B-4. 검수 UI — 프론트에 QA 점수 표시, manual_review 건 재생성/승인 버튼
+- B-4. 검수 UI — **차기 착수 항목 (2026-07-06 /grill-me로 상세 확정, ADR-013)**: 목록+상세 풀 구현, 승인/재생성(프롬프트 수정+확인)/폐기, 영상 생성을 승인 후로 이연, 포맷 다운로드 포함, StaticFiles 서빙, `feature/review-ui` 브랜치에서 스텁 모드 개발 후 실생성 1회 검증
 - B-5. Soul 학습 연동 — 학습 API 공개 시 `create_soul_id()` 교체, 얼굴 동일성 게이트 상시화
 - B-6. 운영 전환 준비 — PostgreSQL(+pgvector) 마이그레이션, S3 스토리지, Redis 큐 (스케일 시점)
 
