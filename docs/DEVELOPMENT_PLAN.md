@@ -1,95 +1,103 @@
-# 개발계획서 — JBLANC AI Fashion Marketing Automation System
+# 개발계획서 — 제이블랑(JBLANC) AI Fashion Content Automation System
 
-> Development Plan
-> 버전 1.0 · 작성일 2026-06-30
+- 문서 버전: v2.0
+- 작성일: 2026-07-05
+- 변경 이력
+  - v1.1 (2026-07-02) — 동작·표정 자연스러움 검증(Naturalness QA) 작업을 Phase 3/4에 반영
+  - v2.0 (2026-07-05) — **실구현 현황 기준 전면 개정.** 스텁 모드 1회전 완료 상태를 반영하고, 남은 작업을 "실연동 재검증 트랙"과 "기능 완성 트랙"으로 재편. ADR/TDD 문서 신설과 연동
+
+관련 문서: [PRD.md](PRD.md)(요구사항) · [TRD.md](TRD.md)(기술 스펙) · [TDD.md](TDD.md)(실구현 설계) · [ADR.md](ADR.md)(의사결정 기록) · [plan.md](plan.md)/[status.md](status.md)/[tests.md](tests.md)(실행 추적)
 
 ---
 
-## 1. 개발 전략
+## 1. 개발 원칙
 
-핵심 리스크가 가장 큰 AI 일관성(모델 Identity 유지)과 상품 원본 보존을 먼저 검증한다. 이미지·영상 생성은 자체 추론 인프라 대신 Higgsfield MCP로 처리하고, 에이전트가 MCP를 직접 호출한다. 검증된 파이프라인 위에 영상·SNS 자동화·프론트엔드를 순차로 쌓는다.
+- Production 수준 코드: 모듈화, API 구조 설계, 환경변수 관리, Error Handling(스텁 강등), 테스트 코드 필수
+- 실행 추적은 plan.md(Phase 0~6 체크리스트)와 status.md(완료 판정·의사결정 기록)로 하고, 이 문서는 로드맵·전략 수준을 유지한다
+- 외부 의존(크레딧·API 공개 여부)에 막힌 작업은 코드가 아닌 "블로커"로 관리하고, 막히지 않은 작업을 먼저 소진한다
+- 의사결정이 필요한 지점은 반드시 사용자에게 먼저 질문한다
 
-각 단계는 독립적으로 검증 가능한 산출물을 갖는다.
+## 2. 현재 위치 (2026-07-05 기준)
 
-## 2. 단계별 로드맵
+**Phase 0~6 전체가 스텁 모드로 1회전 완료됐다.** 상품 업로드부터 화보 이미지·릴스 영상·SNS 카피 산출까지 E2E 파이프라인(`/pipeline/run`)이 프론트엔드 포함 동작하고, pytest 17건이 tests.md 기준을 고정하고 있다.
 
-### Phase 0 — 기반 셋업
+| 영역 | 상태 |
+|---|---|
+| 백엔드 API (업로드/모델/이미지/영상/SNS/파이프라인) | ✅ 동작 |
+| Agent 1/2/5 (Anthropic) | ✅ 코드 완성 — 크레딧 잔액 0으로 스텁 강등 중 |
+| Agent 3/4 (Higgsfield Platform REST) | ✅ 코드 완성 — 크레딧 잔액 0으로 스텁 강등 중 |
+| Soul Character 학습 | ⏸ 학습 API 미공개, 스텁 (ADR-008) |
+| 품질 게이트 (SSIM 실계산 + 재생성 루프) | ✅ 동작 — 실생성물 기준 재검증 대기 |
+| Naturalness QA (PRD FR-7) | ❌ 미구현 |
+| 프론트엔드 (업로드→생성→결과) | ✅ 동작 (Next.js 16) |
+| Redis/Celery 비동기 큐 | ⏸ 보류 (ADR-007, 동기 처리) |
+| 인스타그램 발행 | ❌ 미구현 (PRD 범위: 등록 준비까지) |
 
-- 모노레포 구조(`frontend`, `backend`, `agents`, `docs`) 구성.
-- FastAPI 스켈레톤 + PostgreSQL + Object Storage + Job Queue 연결.
-- 검증: 헬스체크 API와 더미 업로드/조회 동작.
+### 현재 블로커 (코드 외부 요인)
 
-### Phase 1 — 상품 분석 & AI 모델 생성 (핵심 검증)
+1. **Anthropic 크레딧 0** — 키 유효, 잔액 부족. 충전 즉시 Agent 1/2/5 실동작
+2. **Higgsfield 크레딧 0** — key/secret 유효, `not_enough_credits`. 충전 즉시 Agent 3/4 실생성
+3. **Soul 학습 API 미공개** — Higgsfield 공개 대기
 
-- Agent 1 상품 분석으로 메타데이터 추출.
-- Agent 3가 `higgsfield-soul-id`로 모델 1회 학습 후 `soul_reference_id` 저장·재사용.
-- 검증: 동일 `model_id`(= 동일 Soul ID)로 여러 이미지 생성 시 얼굴 동일성 점수 확보.
+## 3. 남은 로드맵 — 2트랙
 
-### Phase 2 — 상품 원본 유지 이미지 생성
+### 트랙 A. 실연동 재검증 (블로커 해소 시 즉시 착수, 예상 1주)
 
-- Higgsfield product-photoshoot / image-to-image reference로 상품 원본 보존.
-- Agent 2 프롬프트 자동 생성 연결.
-- 검증: 상품 디자인·색상·패턴·로고 유지율(SSIM/임베딩) 기준 통과.
+크레딧 충전만 되면 코드 변경 없이 실생성이 시작되므로, 이 트랙은 "검증과 튜닝"이 본체다.
 
-### Phase 3 — 영상 생성
+- A-1. Agent 1/2/5 실호출 검증 — 실제 상품 이미지 분석 품질, 프롬프트 품질, 카피 품질 육안 확인 (tests.md Phase 1/4 실기준)
+- A-2. Agent 3 실이미지 생성 — `soul/standard` 실생성물로 SSIM 게이트 통과율 측정, 임계값(0.80) 실측 튜닝
+- A-3. Agent 4 실영상 생성 — `dop/preview` 5~15초 9:16 검증 (tests.md Phase 3)
+- A-4. 재생성 루프 실검증 — 실제 미달 생성물로 자동 재생성 트리거 확인 (tests.md Phase 6)
+- A-5. 처리 시간 실측 — 상품 1건 → 전체 산출물 10분 이내(PRD 비기능) 확인, 초과 시 Redis 도입 판단(ADR-007 재평가)
+- A-6. 생성물 로컬 보관 — Higgsfield URL 만료 대비 `storage/results/` 다운로드 저장
 
-- Agent 4가 `higgsfield-generate`(image-to-video)로 5~15초 릴스(9:16) 생성.
-- 카메라 워킹·모션 옵션 적용.
-- 검증: 프레임 간 얼굴 일관성, 배경 왜곡 점수.
+### 트랙 B. 기능 완성 (블로커와 무관하게 진행 가능)
 
-### Phase 4 — SNS 콘텐츠 자동 생성
+- B-1. Naturalness QA 1차 (PRD FR-7) — 프롬프트 레이어 선행: TRD §5/§6의 자연스러움 지시어·Negative Prompt를 Agent 2 템플릿에 내장 (실생성물 없이 가능)
+- B-2. Naturalness QA 2차 — 실생성물 확보 후: facial landmark/pose 기반 `validate_naturalness()` 구현, `naturalness_score` 컬럼 추가, 게이트 파이프라인에 연결 (임계 0.9/0.8, TRD §4)
+- B-3. 인스타 포맷 산출 — Feed 1080x1350 / Reel·Story 1080x1920 리사이즈·크롭 모듈
+- B-4. 검수 UI — **차기 착수 항목 (2026-07-06 /grill-me로 상세 확정, ADR-013)**: 목록+상세 풀 구현, 승인/재생성(프롬프트 수정+확인)/폐기, 영상 생성을 승인 후로 이연, 포맷 다운로드 포함, StaticFiles 서빙, `feature/review-ui` 브랜치에서 스텁 모드 개발 후 실생성 1회 검증
+- B-5. Soul 학습 연동 — 학습 API 공개 시 `create_soul_id()` 교체, 얼굴 동일성 게이트 상시화
+- B-6. 운영 전환 준비 — PostgreSQL(+pgvector) 마이그레이션, S3 스토리지, Redis 큐 (스케일 시점)
 
-- Agent 5로 게시글 문구·해시태그·광고 카피 생성.
-- 검증: 채널별 톤·해시태그 규칙 충족.
-
-### Phase 5 — 프론트엔드 & 오케스트레이션
-
-- Next.js: 상품 업로드 → 생성 요청 → 결과 확인 → 다운로드 → SNS 예약.
-- MCP Orchestrator로 전체 파이프라인 end-to-end 연결.
-- 검증: 상품 1건 업로드 → 화보·릴스·카피 자동 산출 시연.
-
-### Phase 6 — 품질 검증 자동화 & 안정화
-
-- Image/Video Quality Score 자동 평가 및 미달 재생성 루프.
-- 브랜드 스타일 학습(JBLANC STYLE MODEL) 반영.
-- 검증: 자동 평가 통과율 및 처리 시간 측정.
-
-## 3. 마일스톤
-
-| 마일스톤 | 산출물 | 완료 기준 |
-| --- | --- | --- |
-| M1 | 상품 분석 + 모델 Identity 유지 | 동일 모델 다중 이미지 생성 |
-| M2 | 상품 원본 보존 이미지 | 유지율 기준 통과 |
-| M3 | 릴스 영상 생성 | 5~15초 영상 + 일관성 점수 |
-| M4 | SNS 콘텐츠 자동화 | 문구·해시태그·카피 산출 |
-| M5 | End-to-End 플랫폼 | 업로드→콘텐츠 자동 산출 시연 |
-| M6 | 품질 자동검증 안정화 | 자동 평가·재생성 루프 가동 |
-
-## 4. 디렉터리 구조 (예정)
+### 착수 순서 권고
 
 ```
-vov_ai_detection/
-├── docs/                 # PRD, TRD, 개발계획서
-├── frontend/             # Next.js
-├── backend/              # FastAPI
-│   ├── app/api/          # product / ai / sns 라우터
-│   ├── app/services/     # 파이프라인·스토리지·큐
-│   └── app/models/       # ORM 엔티티
-├── agents/               # MCP Agent 1~5 (Higgsfield MCP 호출)
-└── workers/              # Higgsfield MCP 호출 비동기 워커
+(크레딧 충전 전)  B-1 → B-3 → B-4
+(크레딧 충전 후)  A-1 → A-2 → A-3 → A-4 → A-5 → A-6 → B-2
+(API 공개 후)     B-5
+(운영 결정 후)    B-6
 ```
 
-## 5. 리스크 및 대응
+## 4. 테스트 계획
 
-| 리스크 | 영향 | 대응 |
-| --- | --- | --- |
-| 모델 얼굴 일관성 저하 | 브랜드 신뢰도 | Soul ID 고정 + 자동 일관성 점수 |
-| 상품 디자인 변형 | 상품 오인 | Higgsfield reference 제어 + 유지율 검증 회송 |
-| 영상 품질 미달 | 광고 부적합 | 품질 점수 기준 미달 재생성 |
-| 외부 MCP 비용·레이트리밋·지연 | 처리 속도·비용 | 비동기 큐 + 재시도·타임아웃 + 호출 모니터링 |
+- **회귀 스위트**: `backend/tests/` pytest 17건 — 모든 커밋 전 통과 필수. 트랙 A/B 작업마다 해당 케이스 추가
+- **실연동 검증**: tests.md의 Phase별 합격 기준을 실생성물로 재판정 (스텁 판정과 구분해 status.md에 기록)
+- **QA 회귀**: SSIM/얼굴/naturalness 임계값 변경 시 경계값 테스트 갱신
+- **육안 검수**: 자연스러움 자동 점수와 사람 평가 일치율 측정 → 임계값 튜닝 (A-2, B-2)
 
-## 6. 검증 원칙
+## 5. 완료 기준 (Definition of Done)
 
-- 각 Phase는 자동 평가 점수 또는 시연으로 완료를 증명한다.
-- 상품 원본 유지율과 모델 동일성은 모든 생성 단계의 게이트로 둔다.
-- 기준 미달 산출물은 배포하지 않고 재생성 루프로 회송한다.
+### 스텁 모드 DoD — ✅ 달성 (2026-07-03 사용자 승인)
+1. 상품 업로드만으로 화보·릴스·카피가 자동 산출되는 E2E 파이프라인 동작
+2. 품질 게이트(SSIM 실계산)와 자동 재생성 루프가 코드 레벨에서 강제됨
+3. 외부 API 장애 시에도 파이프라인이 죽지 않고 스텁 강등 (`stub`/`reason` 추적 가능)
+4. pytest 스위트로 검증 기준 고정
+
+### 실생성 DoD — 미달성 (트랙 A+B 완료 시)
+1. 얼굴 일관성: similarity ≥ 0.85, 동일 인물 인식률 95% 이상 (Soul 학습 API 필요)
+2. 동작·표정 자연스러움: naturalness_score ≥ 0.9, 부자연 검출률 5% 미만
+3. 상품 디테일 왜곡 없음 (SSIM ≥ 0.80 실측 통과)
+4. 상품 1건 → 피드/릴스/스토리 + 캡션/해시태그, 10분 이내
+5. 생성 이력·프롬프트 전체 DB 저장으로 재현 가능
+
+## 6. 리스크 관리
+
+| 리스크 | 현황 및 대응 |
+|---|---|
+| 크레딧 소진으로 개발 중단 | 스텁 강등 구조로 개발·테스트는 크레딧 없이 지속 가능 (ADR-005) |
+| Soul 학습 API 미공개 장기화 | `soul/standard` 기본 인물로 우선 운영, 얼굴 게이트는 조건부 유지 (ADR-008) |
+| 실생성 시간 > HTTP 타임아웃 | A-5에서 실측 후 Redis 큐 도입 판단 (ADR-007 재평가) |
+| 생성 API 비용 초과 | 재생성 최대 2회 제한(ADR-009), 프롬프트 최적화, 크레딧 소진 시 스텁 강등 |
+| 상품 디테일 왜곡 | SSIM 게이트 + 재생성 루프 + Negative Prompt (B-1) |

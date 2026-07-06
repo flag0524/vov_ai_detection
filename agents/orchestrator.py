@@ -1,9 +1,8 @@
-# 전체 파이프라인 오케스트레이터: Agent 1→2→3→4→5 순차 실행
+# 전체 파이프라인 오케스트레이터: Agent 2→3→4→5 순차 실행 (상품 정보는 직접 입력, ADR-012)
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-from agents.agent1_product_analyzer import analyze_product_image
 from agents.agent2_prompt_engineer import generate_photoshoot_prompt
 from agents.agent3_fashion_model import create_soul_id, generate_image
 from agents.agent4_video_creator import generate_video
@@ -13,13 +12,14 @@ from agents.agent5_marketing import generate_sns_content
 def run_pipeline(
     product_image_path: str,
     model_attrs: dict,
+    product_meta: dict = None,
     soul_reference_id: str = None,
     background: str = "Seoul luxury boutique",
 ) -> dict:
-    """상품 이미지 하나로 화보·영상·SNS 카피를 모두 생성하고 결과를 반환한다."""
+    """상품 이미지와 상품 정보(직접 입력)로 화보·영상·SNS 카피를 모두 생성하고 결과를 반환한다."""
 
-    # Phase 1: 상품 분석
-    product_meta = analyze_product_image(product_image_path)
+    # Phase 1: 상품 정보 — 담당자 직접 입력 (ADR-012, Vision 분석 폐기)
+    product_meta = product_meta or {}
 
     # Phase 1: Soul ID (신규 모델이면 학습, 기존이면 재사용)
     if not soul_reference_id:
