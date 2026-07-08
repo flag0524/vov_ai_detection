@@ -22,6 +22,28 @@ _BASE_NEGATIVE = (
     "altered product design, distorted logo"
 )
 
+# SCREEN_DESIGN §2.6 — 배경/씨 프리셋 (모델·상품 고정, 배경만 자유 변수)
+# 프리셋 키 → 화보 프롬프트에 주입할 씨 문구. 신규 프리셋은 여기만 추가한다.
+PRESET_SCENES = {
+    "studio_white": "clean white seamless studio backdrop, professional softbox lighting",
+    "city_street": "modern urban city street, contemporary architecture, natural daylight",
+    "cafe": "cozy cafe interior, warm ambient light, softly blurred background",
+    "nature": "outdoor natural setting with greenery, soft natural daylight, golden hour",
+    "seasonal": "atmospheric seasonal mood backdrop, cinematic seasonal ambience",
+    "minimal_color": "minimal solid color background with soft gradient, studio lighting",
+}
+_DEFAULT_PRESET = "studio_white"
+
+
+def resolve_background(preset: str = None, custom: str = None) -> str:
+    """배경 프리셋 키/커스텀 텍스트를 화보 프롬프트용 씨 문구로 해석한다.
+    우선순위: 커스텀(비어있지 않으면) > 프리셋 매핑 > 기본값(studio_white)."""
+    if custom and custom.strip():
+        return custom.strip()
+    if preset and preset in PRESET_SCENES:
+        return PRESET_SCENES[preset]
+    return PRESET_SCENES[_DEFAULT_PRESET]
+
 
 def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background: str = "Seoul luxury boutique") -> dict:
     """상품 정보 + 모델 속성 → Higgsfield 생성 프롬프트를 템플릿으로 조립한다.

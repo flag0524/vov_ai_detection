@@ -36,10 +36,18 @@ def _download_generated(image_url: str, job_key: str) -> str | None:
         return None
 
 
+class BackgroundSpec(BaseModel):
+    # SCREEN_DESIGN §2.6 — 배경/씨 선택 (프리셋 키 + 커스텀 텍스트)
+    preset: str = None
+    custom: str = None
+
+
 class PipelineRequest(BaseModel):
     product_id: str
     model_id: str = None
-    background: str = "Seoul luxury boutique"
+    background: BackgroundSpec = None
+    # SCREEN_DESIGN §2.5 #5 — 자연스러운 동작 연출 (릴스 카메라 워킹)
+    camera_motion: str = "dolly_in"
 
 
 @router.post("/run")
@@ -50,10 +58,14 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="product not found")
 
-    from agents.agent2_prompt_engineer import generate_photoshoot_prompt
+    from agents.agent2_prompt_engineer import generate_photoshoot_prompt, resolve_background
     from agents.agent3_fashion_model import create_soul_id, generate_image
     from agents.agent4_video_creator import generate_video
     from agents.agent5_marketing import generate_sns_content
+
+    # 배경/씨: 프리셋 키/커스텀 텍스트를 씨 문구로 해석 (모델·상품은 고정, 배경만 변경)
+    bg = req.background or BackgroundSpec()
+    scene = resolve_background(bg.preset, bg.custom)
 
     # Step 1: 상품 정보 — 업로드 시 담당자가 입력한 값 사용 (ADR-012, Vision 분석 폐기)
     image_path = product.image_ref or ""
@@ -92,7 +104,7 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     model_attrs = {"hair_style": ai_model.hair_style, "age": ai_model.age, "mood": ai_model.mood, "fashion_style": ai_model.fashion_style}
 
     # Step 3: 프롬프트 + 이미지 생성 (1회)
-    prompt_result = generate_photoshoot_prompt(product_meta, model_attrs, req.background)
+    prompt_result = generate_photoshoot_prompt(product_meta, model_attrs, scene)
     image_result = generate_image(prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id)
 
     # Step 4: 품질 검증 — SSIM은 정보성 점수 (ADR-011, 2026-07-05 사용자 결정)
@@ -103,8 +115,8 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     quality = validate_generation(image_path, generated_path or image_path)
     attempts = 1
 
-    # Step 5: 영상 생성
-    video_result = generate_video(image_url=image_result["image_url"])
+    # Step 5: 영상 생성 (카메라 동작 = 자연스러운 연출 제어)
+    video_result = generate_video(image_url=image_result["image_url"], camera_motion=req.camera_motion)
 
     # Step 6: SNS 카피
     sns_result = generate_sns_content(product_meta)
@@ -115,7 +127,7 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     img_job = GenerationJob(
         job_id=job_key, type="image", product_id=product.product_id,
         model_id=ai_model.model_id, status="done",
-        params={"prompt": prompt_result["prompt"]},
+        params={"prompt": prompt_result["prompt"], "background": {"preset": bg.preset, "custom": bg.custom, "scene": scene}},
         result_refs={
             "image_url": image_result["image_url"],
             "local_path": generated_path,
@@ -127,7 +139,7 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     vid_job = GenerationJob(
         job_id=str(uuid.uuid4()), type="video", product_id=product.product_id,
         model_id=ai_model.model_id, status="done",
-        result_refs={"video_url": video_result["video_url"]},
+        result_refs={"video_url": video_result["video_url"], "camera_motion": req.camera_motion},
     )
     content = Content(
         content_id=str(uuid.uuid4()), source_ref=product.product_id,
@@ -148,6 +160,7 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
         "regeneration_attempts": attempts,
         "processing_time_sec": processing_time_sec,
         "video_url": video_result["video_url"],
+        "camera_motion": req.camera_motion,
         "sns": sns_result,
         "stubs": {
             "image": image_result.get("stub", False),

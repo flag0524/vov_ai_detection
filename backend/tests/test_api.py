@@ -131,6 +131,83 @@ def test_upload_with_product_metadata(client):
     assert "네이비 트위드 재킷" in result["sns"]["caption"]
 
 
+# --- SCREEN_DESIGN §2.6: 배경/씨 선택 (모델·상품 고정, 배경만 변경) ---
+
+def test_resolve_background_precedence():
+    """커스텀 > 프리셋 > 기본값(studio_white) 우선순위"""
+    from agents.agent2_prompt_engineer import resolve_background, PRESET_SCENES
+    # 커스텀 우선
+    assert resolve_background("city_street", "  한강 산책로  ") == "한강 산책로"
+    # 프리셋 매핑
+    assert resolve_background("cafe", "") == PRESET_SCENES["cafe"]
+    # 알 수 없는/빈 값은 기본값
+    assert resolve_background(None, None) == PRESET_SCENES["studio_white"]
+    assert resolve_background("no_such_preset", "") == PRESET_SCENES["studio_white"]
+
+
+def test_pipeline_background_preset_injected_into_prompt(client):
+    """프리셋 씨가 화보 프롬프트 Scene 절에 주입된다"""
+    from agents.agent2_prompt_engineer import PRESET_SCENES
+    product_id = _upload_product(client)
+    result = client.post(
+        "/pipeline/run",
+        json={"product_id": product_id, "background": {"preset": "city_street"}},
+    ).json()
+    assert PRESET_SCENES["city_street"] in result["prompt"]
+
+
+def test_pipeline_background_custom_overrides_preset(client):
+    """커스텀 배경 텍스트가 프리셋보다 우선 주입된다"""
+    product_id = _upload_product(client)
+    result = client.post(
+        "/pipeline/run",
+        json={
+            "product_id": product_id,
+            "background": {"preset": "studio_white", "custom": "노을 지는 한강 산책로"},
+        },
+    ).json()
+    assert "노을 지는 한강 산책로" in result["prompt"]
+
+
+def test_pipeline_no_background_defaults_studio(client):
+    """background 미지정 시 기본값(studio_white)으로 동작 — 하위 호환"""
+    from agents.agent2_prompt_engineer import PRESET_SCENES
+    product_id = _upload_product(client)
+    result = client.post("/pipeline/run", json={"product_id": product_id}).json()
+    assert PRESET_SCENES["studio_white"] in result["prompt"]
+
+
+# --- SCREEN_DESIGN §2.5 #4·#5: 모델 고정 / 자연스러운 동작 ---
+
+def test_pipeline_reuses_model_keeps_same_soul_id(client):
+    """model_id 전달 시 같은 모델·Soul ID를 재사용한다 (모델 동일성 유지 #4)"""
+    product_id = _upload_product(client)
+    first = client.post("/pipeline/run", json={"product_id": product_id}).json()
+    second = client.post(
+        "/pipeline/run",
+        json={"product_id": product_id, "model_id": first["model_id"]},
+    ).json()
+    assert second["model_id"] == first["model_id"]
+    assert second["soul_reference_id"] == first["soul_reference_id"]
+
+
+def test_pipeline_camera_motion_passthrough(client):
+    """camera_motion이 응답에 반영된다 (자연스러운 동작 연출 #5)"""
+    product_id = _upload_product(client)
+    result = client.post(
+        "/pipeline/run",
+        json={"product_id": product_id, "camera_motion": "orbit"},
+    ).json()
+    assert result["camera_motion"] == "orbit"
+
+
+def test_pipeline_camera_motion_defaults_dolly_in(client):
+    """camera_motion 미지정 시 기본값 dolly_in"""
+    product_id = _upload_product(client)
+    result = client.post("/pipeline/run", json={"product_id": product_id}).json()
+    assert result["camera_motion"] == "dolly_in"
+
+
 # --- Phase 3: 영상 생성 파라미터 검증 ---
 
 def test_video_duration_range_enforced():
