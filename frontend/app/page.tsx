@@ -49,14 +49,21 @@ const CAMERA_MOTIONS = [
   ["static", "정적(미세 동작)"],
 ] as const;
 
-const INFO_FIELDS = [
+// 기본 정보 (담당자 입력)
+const BASIC_FIELDS = [
   ["name", "상품명 (예: 네이비 트위드 재킷)"],
   ["category", "카테고리 (원피스/재킷/코트…)"],
-  ["color", "색상"],
-  ["material", "소재"],
-  ["style", "스타일 (럭셔리/캐주얼…)"],
   ["target_customer", "타깃 고객"],
 ] as const;
+
+// AI 분석 패널의 속성 (색상은 자동 추출, 나머지는 담당자 입력 — ADR-012)
+const ATTR_FIELDS = [
+  ["material", "소재·텍스처 (예: 코튼 데님)"],
+  ["silhouette", "핏·실루엣 (예: A라인 맥시)"],
+  ["style", "스타일 무드 (럭셔리/캐주얼…)"],
+] as const;
+
+type PaletteColor = { hex: string; ratio: number };
 
 // 다크 UI 공통 클래스
 const CHIP_ON = "border-violet-500 bg-violet-500/15 text-violet-200";
@@ -79,9 +86,13 @@ export default function Home() {
     category: "",
     color: "",
     material: "",
+    silhouette: "",
     style: "",
     target_customer: "",
   });
+  // AI 이미지 분석 — 색상 팔레트 자동 추출 (외부 API 없음, ADR-012 준수)
+  const [palette, setPalette] = useState<PaletteColor[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
   // 배경/씨 선택 (모델·상품은 고정, 배경만 변경)
   const [bgPreset, setBgPreset] = useState<string>("studio_white");
   const [bgCustom, setBgCustom] = useState("");
@@ -96,6 +107,29 @@ export default function Home() {
       if (prev) URL.revokeObjectURL(prev);
       return f ? URL.createObjectURL(f) : null;
     });
+    setPalette([]);
+    if (f) analyzePalette(f);
+  }
+
+  // 업로드 이미지에서 색상 팔레트만 자동 추출 (소재·핏·스타일은 담당자 입력)
+  async function analyzePalette(f: File) {
+    setAnalyzing(true);
+    try {
+      const form = new FormData();
+      form.append("file", f);
+      const res = await fetch(`${API_BASE}/product/analyze-palette`, {
+        method: "POST",
+        body: form,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPalette(data.palette ?? []);
+      }
+    } catch {
+      // 분석 실패는 생성 흐름을 막지 않는다 (색상은 참고용)
+    } finally {
+      setAnalyzing(false);
+    }
   }
 
   const busy = stage === "uploading" || stage === "generating";
@@ -208,8 +242,8 @@ export default function Home() {
 
             {/* 입력 필드 */}
             <div className="flex flex-1 flex-col gap-3">
-              <div className="grid grid-cols-2 gap-2">
-                {INFO_FIELDS.map(([key, placeholder]) => (
+              <div className="grid grid-cols-3 gap-2">
+                {BASIC_FIELDS.map(([key, placeholder]) => (
                   <input
                     key={key}
                     type="text"
@@ -219,6 +253,70 @@ export default function Home() {
                     className={INPUT_CLS}
                   />
                 ))}
+              </div>
+
+              {/* AI 이미지 분석 (색상 자동 추출 + 담당자 입력 속성) */}
+              <div className={SUBCARD}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-300">AI 이미지 분석</span>
+                  <span className="text-[11px] text-zinc-500">
+                    {analyzing
+                      ? "색상 분석 중..."
+                      : palette.length
+                        ? "색상 자동 · 나머지 담당자 입력"
+                        : "이미지 업로드 시 색상 자동 추출"}
+                  </span>
+                </div>
+
+                {/* 색상 팔레트 (자동) */}
+                <div className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-[11px] text-zinc-500">색상 팔레트</span>
+                  {palette.length ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {palette.map((c) => (
+                        <span
+                          key={c.hex}
+                          title={`${c.hex} · ${Math.round(c.ratio * 100)}%`}
+                          className="flex items-center gap-1 rounded-md border border-[#33333c] px-1.5 py-1"
+                        >
+                          <span
+                            className="h-4 w-4 rounded-sm"
+                            style={{ backgroundColor: c.hex }}
+                          />
+                          <span className="font-mono text-[10px] text-zinc-400">
+                            {c.hex}
+                          </span>
+                        </span>
+                      ))}
+                      <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                        자동
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-zinc-600">—</span>
+                  )}
+                </div>
+
+                {/* 담당자 입력 속성 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="색상명 (예: 차콜 워시드)"
+                    value={info.color}
+                    onChange={(e) => setInfo({ ...info, color: e.target.value })}
+                    className={INPUT_CLS}
+                  />
+                  {ATTR_FIELDS.map(([key, placeholder]) => (
+                    <input
+                      key={key}
+                      type="text"
+                      placeholder={placeholder}
+                      value={info[key]}
+                      onChange={(e) => setInfo({ ...info, [key]: e.target.value })}
+                      className={INPUT_CLS}
+                    />
+                  ))}
+                </div>
               </div>
 
               {/* 배경 / 씬 */}
