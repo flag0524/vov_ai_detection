@@ -52,8 +52,15 @@ const CAMERA_MOTIONS = [
 // 기본 정보 (담당자 입력)
 const BASIC_FIELDS = [
   ["name", "상품명 (예: 네이비 트위드 재킷)"],
-  ["category", "카테고리 (원피스/재킷/코트…)"],
   ["target_customer", "타깃 고객"],
+] as const;
+
+// 카테고리 (상의/하의 구분) → 품번 코드. 백엔드 CATEGORY_CODES와 일치.
+const CATEGORIES = [
+  ["상의", "TOP"],
+  ["하의", "BTM"],
+  ["원피스", "OPS"],
+  ["아우터", "OUT"],
 ] as const;
 
 // AI 분석 패널의 속성 (색상은 자동 추출, 나머지는 담당자 입력 — ADR-012)
@@ -93,6 +100,8 @@ export default function Home() {
   // AI 이미지 분석 — 색상 팔레트 자동 추출 (외부 API 없음, ADR-012 준수)
   const [palette, setPalette] = useState<PaletteColor[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  // 품번 — 업로드 시 카테고리 코드로 자동 채번 (표시용)
+  const [sku, setSku] = useState<string | null>(null);
   // 배경/씨 선택 (모델·상품은 고정, 배경만 변경)
   const [bgPreset, setBgPreset] = useState<string>("studio_white");
   const [bgCustom, setBgCustom] = useState("");
@@ -108,6 +117,7 @@ export default function Home() {
       return f ? URL.createObjectURL(f) : null;
     });
     setPalette([]);
+    setSku(null);
     if (f) analyzePalette(f);
   }
 
@@ -151,7 +161,9 @@ export default function Home() {
         body: form,
       });
       if (!uploadRes.ok) throw new Error(`업로드 실패 (${uploadRes.status})`);
-      const { product_id } = await uploadRes.json();
+      const uploaded = await uploadRes.json();
+      const { product_id } = uploaded;
+      if (uploaded.sku) setSku(uploaded.sku);
 
       setStage("generating");
       const pipelineRes = await fetch(`${API_BASE}/pipeline/run`, {
@@ -242,7 +254,55 @@ export default function Home() {
 
             {/* 입력 필드 */}
             <div className="flex flex-1 flex-col gap-3">
-              <div className="grid grid-cols-3 gap-2">
+              {/* 품번 (카테고리 코드 기반 자동 채번) */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    품번
+                  </span>
+                  <span className="font-mono text-lg font-semibold text-zinc-100">
+                    {sku ??
+                      `JBL-${
+                        CATEGORIES.find(([label]) => label === info.category)?.[1] ??
+                        "GEN"
+                      }-•••`}
+                  </span>
+                  <span className="rounded bg-[#232329] px-1.5 py-0.5 text-[9px] tracking-[0.1em] text-zinc-400">
+                    AUTO
+                  </span>
+                </div>
+                {!sku && (
+                  <span className="text-[11px] text-zinc-500">생성 시 자동 채번</span>
+                )}
+              </div>
+
+              {/* 카테고리 (상의/하의 구분) */}
+              <div>
+                <span className="mb-1.5 block text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                  카테고리
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {CATEGORIES.map(([label, code]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() =>
+                        setInfo((prev) => ({
+                          ...prev,
+                          category: prev.category === label ? "" : label,
+                        }))
+                      }
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                        info.category === label ? CHIP_ON : CHIP_OFF
+                      }`}
+                    >
+                      {label} {code}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
                 {BASIC_FIELDS.map(([key, placeholder]) => (
                   <input
                     key={key}
