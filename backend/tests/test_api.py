@@ -208,6 +208,61 @@ def test_pipeline_camera_motion_defaults_dolly_in(client):
     assert result["camera_motion"] == "dolly_in"
 
 
+# --- SCREEN_DESIGN §2.5: AI 이미지 분석 (색상 자동 추출, ADR-012 준수) ---
+
+def test_extract_palette_solid_color():
+    """단색 이미지는 그 색을 지배색으로 추출한다 (외부 API 없음, 결정적)"""
+    from PIL import Image
+    from app.services.palette import extract_palette
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), color=(120, 80, 200)).save(buf, format="PNG")
+    palette = extract_palette(buf.getvalue(), n=5)
+    assert palette
+    assert palette[0]["hex"] == "#7850C8"
+    assert palette[0]["ratio"] == 1.0
+
+
+def test_analyze_palette_endpoint(client):
+    """POST /product/analyze-palette → 색상 팔레트 반환"""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), color=(20, 200, 90)).save(buf, format="PNG")
+    buf.seek(0)
+    resp = client.post(
+        "/product/analyze-palette",
+        files={"file": ("p.png", buf, "image/png")},
+    )
+    assert resp.status_code == 200
+    palette = resp.json()["palette"]
+    assert palette and palette[0]["hex"] == "#14C85A"
+
+
+def test_analyze_palette_rejects_corrupt_image(client):
+    """손상 이미지는 400"""
+    resp = client.post(
+        "/product/analyze-palette",
+        files={"file": ("bad.jpg", io.BytesIO(b"\xff\xd8\xff\xe0"), "image/jpeg")},
+    )
+    assert resp.status_code == 400
+
+
+def test_upload_accepts_silhouette(client):
+    """업로드가 silhouette를 받아 저장하고 프롬프트에 반영한다 (담당자 입력)"""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), color=(40, 40, 40)).save(buf, format="PNG")
+    buf.seek(0)
+    resp = client.post(
+        "/product/upload",
+        files={"file": ("s.png", buf, "image/png")},
+        data={"name": "테스트", "silhouette": "A라인 맥시"},
+    )
+    assert resp.status_code == 200
+    product_id = resp.json()["product_id"]
+    result = client.post("/pipeline/run", json={"product_id": product_id}).json()
+    assert "A라인 맥시" in result["prompt"]
+
+
 # --- Phase 3: 영상 생성 파라미터 검증 ---
 
 def test_video_duration_range_enforced():

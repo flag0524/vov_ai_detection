@@ -50,7 +50,7 @@ def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background
     외부 API 없이 결정적으로 동작한다 (ADR-012: Anthropic 미사용)."""
     product_parts = [
         str(product_meta.get(k))
-        for k in ("color", "material", "category", "style")
+        for k in ("color", "material", "category", "silhouette", "style")
         if product_meta.get(k)
     ]
     product_desc = " ".join(product_parts) if product_parts else "fashion product"

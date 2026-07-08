@@ -8,6 +8,7 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 from app.models.base import get_db
 from app.models.entities import Product
+from app.services.palette import extract_palette
 
 router = APIRouter(prefix="/product", tags=["product"])
 
@@ -22,6 +23,7 @@ async def upload_product(
     category: str = Form(None),
     color: str = Form(None),
     material: str = Form(None),
+    silhouette: str = Form(None),
     style: str = Form(None),
     target_customer: str = Form(None),
     db: Session = Depends(get_db),
@@ -48,6 +50,7 @@ async def upload_product(
         category=category,
         color=color,
         material=material,
+        silhouette=silhouette,
         style=style,
         target_customer=target_customer,
         image_ref=save_path,
@@ -57,6 +60,18 @@ async def upload_product(
     db.refresh(product)
 
     return {"product_id": product.product_id, "image_ref": product.image_ref}
+
+
+@router.post("/analyze-palette")
+async def analyze_palette(file: UploadFile = File(...)):
+    """업로드 이미지에서 지배 색상 팔레트를 추출한다 (자동, 외부 API 없음 — ADR-012 준수).
+    소재·핏·스타일 등 나머지 속성은 담당자가 직접 입력한다 (Vision 자동분석 폐기)."""
+    content = await file.read()
+    try:
+        palette = extract_palette(content, n=5)
+    except (UnidentifiedImageError, OSError, SyntaxError):
+        raise HTTPException(status_code=400, detail="유효한 이미지 파일이 아닙니다")
+    return {"palette": palette}
 
 
 @router.get("/{product_id}")
