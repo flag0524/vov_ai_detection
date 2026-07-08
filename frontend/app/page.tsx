@@ -1,4 +1,4 @@
-// 상품 업로드 → AI 생성 파이프라인 실행 → 화보/영상/SNS 카피 결과 확인 화면
+// 상품 업로드 → AI 생성 파이프라인 실행 → 화보/영상/SNS 카피 결과 확인 화면 (JBLANC 다크 UI)
 "use client";
 
 import { useState } from "react";
@@ -19,6 +19,7 @@ type PipelineResult = {
     action: string;
   };
   video_url: string;
+  camera_motion?: string;
   sns: {
     caption: string;
     hashtags: string[];
@@ -29,8 +30,46 @@ type PipelineResult = {
 
 type Stage = "idle" | "uploading" | "generating" | "done" | "error";
 
+// SCREEN_DESIGN §2.6 — 배경/씨 프리셋 (백엔드 agent2 PRESET_SCENES 키와 일치)
+const BG_PRESETS = [
+  ["studio_white", "스튜디오 화이트"],
+  ["city_street", "시티 스트리트"],
+  ["cafe", "카페 · 인테리어"],
+  ["nature", "자연 · 아웃도어"],
+  ["seasonal", "계절 무드"],
+  ["minimal_color", "미니멀 컬러"],
+] as const;
+
+// SCREEN_DESIGN §2.5 #5 — 자연스러운 동작 연출 (백엔드 agent4 CAMERA_MOTION_PROMPTS 키와 일치)
+const CAMERA_MOTIONS = [
+  ["dolly_in", "다가가기"],
+  ["dolly_out", "멀어지기"],
+  ["orbit", "회전"],
+  ["pan", "좌우 이동"],
+  ["static", "정적(미세 동작)"],
+] as const;
+
+const INFO_FIELDS = [
+  ["name", "상품명 (예: 네이비 트위드 재킷)"],
+  ["category", "카테고리 (원피스/재킷/코트…)"],
+  ["color", "색상"],
+  ["material", "소재"],
+  ["style", "스타일 (럭셔리/캐주얼…)"],
+  ["target_customer", "타깃 고객"],
+] as const;
+
+// 다크 UI 공통 클래스
+const CHIP_ON = "border-violet-500 bg-violet-500/15 text-violet-200";
+const CHIP_OFF =
+  "border-[#33333c] text-zinc-400 hover:border-zinc-600 hover:text-zinc-300";
+const INPUT_CLS =
+  "rounded-lg border border-[#33333c] bg-[#1b1b1f] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none";
+const SUBCARD =
+  "flex flex-col gap-2 rounded-xl border border-[#33333c] bg-[#1b1b1f] p-3";
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PipelineResult | null>(null);
@@ -43,6 +82,23 @@ export default function Home() {
     style: "",
     target_customer: "",
   });
+  // 배경/씨 선택 (모델·상품은 고정, 배경만 변경)
+  const [bgPreset, setBgPreset] = useState<string>("studio_white");
+  const [bgCustom, setBgCustom] = useState("");
+  // 릴스 카메라 동작 (자연스러운 연출 제어, #5)
+  const [camMotion, setCamMotion] = useState<string>("dolly_in");
+  // 모델 고정: 첫 생성의 모델을 세션 내 재사용해 동일 Soul ID 유지 (#4)
+  const [modelId, setModelId] = useState<string | null>(null);
+
+  function onPickFile(f: File | null) {
+    setFile(f);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return f ? URL.createObjectURL(f) : null;
+    });
+  }
+
+  const busy = stage === "uploading" || stage === "generating";
 
   async function handleGenerate() {
     if (!file) return;
@@ -67,12 +123,19 @@ export default function Home() {
       const pipelineRes = await fetch(`${API_BASE}/pipeline/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id }),
+        body: JSON.stringify({
+          product_id,
+          background: { preset: bgPreset, custom: bgCustom.trim() },
+          camera_motion: camMotion,
+          ...(modelId ? { model_id: modelId } : {}),
+        }),
       });
       if (!pipelineRes.ok) throw new Error(`생성 실패 (${pipelineRes.status})`);
       const data: PipelineResult = await pipelineRes.json();
 
       setResult(data);
+      // 이후 생성은 같은 모델(Soul ID)을 재사용해 모델 동일성 유지 (#4)
+      setModelId(data.model_id);
       setStage("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -81,86 +144,223 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-2xl flex-col gap-8 py-16 px-6">
+    <div className="flex flex-1 flex-col items-center">
+      <main className="flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-10">
+        {/* 상단 브랜드 바 */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[13px] font-bold tracking-[0.14em] text-zinc-100">
+              JBLANC
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">
+              AI Fashion
+            </span>
+          </div>
+          {result && (result.stubs.image || result.stubs.video) && (
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-300">
+              STUB 모드
+            </span>
+          )}
+        </div>
+
         <header>
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-            JBLANC AI Fashion 생성
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
+            콘텐츠 생성
           </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            상품 이미지를 업로드하면 화보 이미지·릴스 영상·SNS 카피를 자동 생성합니다.
+          <p className="mt-1 text-sm text-zinc-400">
+            상품 이미지를 업로드하면 화보·릴스·SNS 카피를 자동 생성합니다 · 인스타그램 발행 준비
           </p>
         </header>
 
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="text-sm"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            {(
-              [
-                ["name", "상품명 (예: 네이비 트위드 재킷)"],
-                ["category", "카테고리 (원피스/재킷/코트…)"],
-                ["color", "색상"],
-                ["material", "소재"],
-                ["style", "스타일 (럭셔리/캐주얼…)"],
-                ["target_customer", "타깃 고객"],
-              ] as const
-            ).map(([key, placeholder]) => (
-              <input
-                key={key}
-                type="text"
-                placeholder={placeholder}
-                value={info[key]}
-                onChange={(e) => setInfo({ ...info, [key]: e.target.value })}
-                className="rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-              />
-            ))}
+        {/* 상품 등록 카드 */}
+        <section className="rounded-2xl border border-[#2a2a31] bg-[#141417] p-5">
+          <div className="mb-4 flex items-center gap-2.5">
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-violet-500/15 text-[11px] font-bold text-violet-300">
+              1
+            </span>
+            <span className="text-[15px] font-semibold text-zinc-100">상품 등록</span>
           </div>
-          <button
-            onClick={handleGenerate}
-            disabled={!file || stage === "uploading" || stage === "generating"}
-            className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background disabled:opacity-40"
-          >
-            {stage === "uploading" && "업로드 중..."}
-            {stage === "generating" && "생성 중..."}
-            {(stage === "idle" || stage === "done" || stage === "error") && "생성 시작"}
-          </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {/* 상품 이미지 프리뷰 */}
+            <div className="sm:w-40 sm:shrink-0">
+              <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-xl border border-[#2a2a31] bg-[#17171b]">
+                {previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={previewUrl}
+                    alt="상품 미리보기"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="px-3 text-center text-xs text-zinc-500">
+                    이미지를 업로드하세요
+                  </span>
+                )}
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+                className="mt-2 w-full text-xs text-zinc-400 file:mr-2 file:rounded-full file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-xs file:text-white hover:file:bg-violet-500"
+              />
+            </div>
+
+            {/* 입력 필드 */}
+            <div className="flex flex-1 flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                {INFO_FIELDS.map(([key, placeholder]) => (
+                  <input
+                    key={key}
+                    type="text"
+                    placeholder={placeholder}
+                    value={info[key]}
+                    onChange={(e) => setInfo({ ...info, [key]: e.target.value })}
+                    className={INPUT_CLS}
+                  />
+                ))}
+              </div>
+
+              {/* 배경 / 씬 */}
+              <div className={SUBCARD}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-300">배경 / 씬</span>
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    모델·상품 고정 · 배경만 변경
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {BG_PRESETS.map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setBgPreset(key)}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                        bgPreset === key ? CHIP_ON : CHIP_OFF
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="커스텀 배경 (예: 노을 지는 한강 산책로, 골든아워) — 입력 시 우선 적용"
+                  value={bgCustom}
+                  onChange={(e) => setBgCustom(e.target.value)}
+                  className={INPUT_CLS}
+                />
+              </div>
+
+              {/* 릴스 동작 연출 */}
+              <div className={SUBCARD}>
+                <span className="text-xs font-medium text-zinc-300">릴스 동작 연출</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {CAMERA_MOTIONS.map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setCamMotion(key)}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                        camMotion === key ? CHIP_ON : CHIP_OFF
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 모델 고정 상태 */}
+              <div className="flex items-center justify-between rounded-xl border border-[#33333c] bg-[#1b1b1f] px-3 py-2 text-xs">
+                {modelId ? (
+                  <>
+                    <span className="text-zinc-400">
+                      🔒 모델 고정됨 · {modelId.slice(0, 8)} (같은 Soul ID 재사용)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setModelId(null)}
+                      className="text-violet-300 underline underline-offset-2 hover:text-violet-200"
+                    >
+                      새 모델로
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-zinc-500">
+                    첫 생성 시 모델이 고정되어 이후 동일 모델로 유지됩니다
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={handleGenerate}
+                disabled={!file || busy}
+                className="mt-1 self-start rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+              >
+                {stage === "uploading" && "업로드 중..."}
+                {stage === "generating" && "생성 중..."}
+                {(stage === "idle" || stage === "done" || stage === "error") &&
+                  "생성 시작"}
+              </button>
+              {error && <p className="text-sm text-red-400">{error}</p>}
+            </div>
+          </div>
         </section>
 
+        {/* 결과 */}
         {result && (
-          <section className="flex flex-col gap-6">
-            {(result.stubs.image || result.stubs.video) && (
-              <p className="rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                ⚠ 스텁 결과물 포함 — 외부 생성 API 미호출 (자격증명/크레딧 확인 필요)
-              </p>
-            )}
+          <section className="flex flex-col gap-4 rounded-2xl border border-[#2a2a31] bg-[#141417] p-5">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full border border-[#33333c] bg-[#1b1b1f] px-3 py-1 text-zinc-300">
+                🔒 모델 {result.model_id.slice(0, 8)}
+                {result.soul_reference_id.startsWith("STUB_")
+                  ? " · Soul STUB"
+                  : " · Soul 학습됨"}
+              </span>
+              <span className="rounded-full border border-[#33333c] bg-[#1b1b1f] px-3 py-1 text-zinc-300">
+                🎬{" "}
+                {CAMERA_MOTIONS.find(([k]) => k === result.camera_motion)?.[1] ??
+                  result.camera_motion}
+              </span>
+            </div>
 
-            <div>
-              <h2 className="text-lg font-medium">화보 이미지</h2>
-              <p className="mt-1 break-all text-sm text-zinc-500">{result.image_url}</p>
-              <p className="mt-2 text-sm">
-                상품 원본 유지율(SSIM): {result.quality.ssim_score} —{" "}
-                {result.quality.overall_pass ? "통과" : "재생성 필요"}
+            <div className="border-t border-[#2a2a31] pt-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-zinc-100">화보 이미지</h2>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] ${
+                    result.quality.overall_pass
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-amber-500/15 text-amber-300"
+                  }`}
+                >
+                  SSIM {result.quality.ssim_score} ·{" "}
+                  {result.quality.overall_pass ? "통과" : "검수 필요"}
+                </span>
+              </div>
+              <p className="mt-1 break-all text-sm text-zinc-500">
+                {result.image_url}
               </p>
             </div>
 
-            <div>
-              <h2 className="text-lg font-medium">릴스 영상</h2>
-              <p className="mt-1 break-all text-sm text-zinc-500">{result.video_url}</p>
+            <div className="border-t border-[#2a2a31] pt-4">
+              <h2 className="text-base font-semibold text-zinc-100">릴스 영상</h2>
+              <p className="mt-1 break-all text-sm text-zinc-500">
+                {result.video_url}
+              </p>
             </div>
 
-            <div>
-              <h2 className="text-lg font-medium">SNS 카피</h2>
-              <p className="mt-1 text-sm">{result.sns.caption}</p>
-              <p className="mt-1 text-sm text-zinc-500">
+            <div className="border-t border-[#2a2a31] pt-4">
+              <h2 className="text-base font-semibold text-zinc-100">SNS 카피</h2>
+              <p className="mt-1 text-sm text-zinc-200">{result.sns.caption}</p>
+              <p className="mt-1 text-sm text-violet-300">
                 {result.sns.hashtags.join(" ")}
               </p>
-              <p className="mt-1 text-sm font-medium">{result.sns.ad_copy}</p>
+              <p className="mt-1 text-sm font-medium text-zinc-100">
+                {result.sns.ad_copy}
+              </p>
             </div>
           </section>
         )}
