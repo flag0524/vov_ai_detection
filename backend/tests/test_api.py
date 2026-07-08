@@ -263,6 +263,37 @@ def test_upload_accepts_silhouette(client):
     assert "A라인 맥시" in result["prompt"]
 
 
+# --- SCREEN_DESIGN §2.5: 품번 자동채번 (카테고리 코드 기반) ---
+
+def _upload_with_category(client, category):
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), color=(90, 90, 90)).save(buf, format="PNG")
+    buf.seek(0)
+    return client.post(
+        "/product/upload",
+        files={"file": ("c.png", buf, "image/png")},
+        data={"category": category},
+    ).json()
+
+def test_sku_category_code_and_sequence(client):
+    """상의/하의/원피스/아우터 코드 매핑 + 카테고리별 순번 증가"""
+    assert _upload_with_category(client, "원피스")["sku"] == "JBL-OPS-001"
+    assert _upload_with_category(client, "원피스")["sku"] == "JBL-OPS-002"
+    assert _upload_with_category(client, "상의")["sku"] == "JBL-TOP-001"
+    assert _upload_with_category(client, "하의")["sku"] == "JBL-BTM-001"
+    assert _upload_with_category(client, "아우터")["sku"] == "JBL-OUT-001"
+
+def test_sku_unknown_category_is_gen(client):
+    """미지정/기타 카테고리는 GEN 코드"""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), color=(10, 10, 10)).save(buf, format="PNG")
+    buf.seek(0)
+    resp = client.post("/product/upload", files={"file": ("g.png", buf, "image/png")})
+    assert resp.json()["sku"] == "JBL-GEN-001"
+
+
 # --- Phase 3: 영상 생성 파라미터 검증 ---
 
 def test_video_duration_range_enforced():

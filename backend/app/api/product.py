@@ -14,6 +14,26 @@ router = APIRouter(prefix="/product", tags=["product"])
 
 STORAGE_DIR = os.getenv("STORAGE_LOCAL_DIR", "../storage")
 
+# 카테고리 → 품번 코드 (상의/하의 구분 포함). 프론트 카테고리 칩과 일치.
+CATEGORY_CODES = [("상의", "TOP"), ("하의", "BTM"), ("원피스", "OPS"), ("아우터", "OUT")]
+
+
+def _category_code(category: str | None) -> str:
+    for keyword, code in CATEGORY_CODES:
+        if category and keyword in category:
+            return code
+    return "GEN"
+
+
+def _generate_sku(db: Session, category: str | None) -> str:
+    """JBL-{코드}-{순번} 형식 품번을 카테고리별 상품 수로 생성한다 (표시용, 비영속).
+    영속 식별이 필요해지면(SCR-004 라이브러리) Product.sku 컬럼으로 승격."""
+    code = _category_code(category)
+    q = db.query(Product)
+    if category:
+        q = q.filter(Product.category == category)
+    return f"JBL-{code}-{q.count() + 1:03d}"
+
 
 @router.post("/upload")
 async def upload_product(
@@ -44,6 +64,8 @@ async def upload_product(
     async with aiofiles.open(save_path, "wb") as f:
         await f.write(content)
 
+    sku = _generate_sku(db, category)
+
     product = Product(
         product_id=product_id,
         name=name or file.filename,
@@ -59,7 +81,7 @@ async def upload_product(
     db.commit()
     db.refresh(product)
 
-    return {"product_id": product.product_id, "image_ref": product.image_ref}
+    return {"product_id": product.product_id, "sku": sku, "image_ref": product.image_ref}
 
 
 @router.post("/analyze-palette")
