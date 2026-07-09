@@ -1,7 +1,7 @@
 // 상품 업로드 → AI 생성 파이프라인 실행 → 화보/영상/SNS 카피 결과 확인 화면 (JBLANC 다크 UI)
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -72,6 +72,20 @@ const ATTR_FIELDS = [
 
 type PaletteColor = { hex: string; ratio: number };
 
+// SCREEN_DESIGN §5 — 콘텐츠 라이브러리 항목 (GET /contents)
+type LibraryItem = {
+  product_id: string;
+  name: string | null;
+  category: string | null;
+  image_url: string | null;
+  video_url: string | null;
+  qa_status: string | null;
+  ssim: number | null;
+  caption: string | null;
+  hashtags: string[];
+  ad_copy: string | null;
+};
+
 // 다크 UI 공통 클래스
 const CHIP_ON = "border-violet-500 bg-violet-500/15 text-violet-200";
 const CHIP_OFF =
@@ -109,6 +123,25 @@ export default function Home() {
   const [camMotion, setCamMotion] = useState<string>("dolly_in");
   // 모델 고정: 첫 생성의 모델을 세션 내 재사용해 동일 Soul ID 유지 (#4)
   const [modelId, setModelId] = useState<string | null>(null);
+  // 뷰 전환 (생성 / 라이브러리) + 라이브러리 상태
+  const [view, setView] = useState<"create" | "library">("create");
+  const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [libCategory, setLibCategory] = useState<string>("");
+  const [libLoading, setLibLoading] = useState(false);
+  const [selected, setSelected] = useState<LibraryItem | null>(null);
+
+  useEffect(() => {
+    if (view !== "library") return;
+    setLibLoading(true);
+    const url = libCategory
+      ? `${API_BASE}/contents?category=${encodeURIComponent(libCategory)}`
+      : `${API_BASE}/contents`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setLibrary(d.items ?? []))
+      .catch(() => setLibrary([]))
+      .finally(() => setLibLoading(false));
+  }, [view, libCategory]);
 
   function onPickFile(f: File | null) {
     setFile(f);
@@ -202,13 +235,35 @@ export default function Home() {
               AI Fashion
             </span>
           </div>
-          {result && (result.stubs.image || result.stubs.video) && (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-300">
-              STUB 모드
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {view === "create" &&
+              result &&
+              (result.stubs.image || result.stubs.video) && (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-300">
+                  STUB 모드
+                </span>
+              )}
+            <div className="flex rounded-full border border-[#2a2a31] bg-[#141417] p-0.5 text-xs">
+              {(["create", "library"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  className={`rounded-full px-3 py-1 transition-colors ${
+                    view === v
+                      ? "bg-violet-600 text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  {v === "create" ? "생성" : "라이브러리"}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
+        {view === "create" && (
+        <>
         <header>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
             콘텐츠 생성
@@ -498,14 +553,65 @@ export default function Home() {
                   {result.quality.overall_pass ? "통과" : "검수 필요"}
                 </span>
               </div>
-              <p className="mt-1 break-all text-sm text-zinc-500">
+
+              {/* 원본 상품 ↔ 생성 화보 비교 (상품 유지 여부 확인) */}
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <figure className="flex flex-col gap-1">
+                  <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-[#2a2a31] bg-[#17171b]">
+                    {previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewUrl}
+                        alt="등록 상품 원본"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xs text-zinc-600">원본 없음</span>
+                    )}
+                  </div>
+                  <figcaption className="text-center text-[11px] text-zinc-500">
+                    등록 상품(원본)
+                  </figcaption>
+                </figure>
+                <figure className="flex flex-col gap-1">
+                  <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-[#2a2a31] bg-[#17171b]">
+                    {result.stubs.image ? (
+                      <span className="px-3 text-center text-[11px] text-amber-300/80">
+                        스텁 이미지<br />(실제 생성물 아님)
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={result.image_url}
+                        alt="생성 화보"
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <figcaption className="text-center text-[11px] text-zinc-500">
+                    생성 화보
+                  </figcaption>
+                </figure>
+              </div>
+              <p className="mt-2 break-all text-[11px] text-zinc-600">
                 {result.image_url}
               </p>
             </div>
 
             <div className="border-t border-[#2a2a31] pt-4">
               <h2 className="text-base font-semibold text-zinc-100">릴스 영상</h2>
-              <p className="mt-1 break-all text-sm text-zinc-500">
+              {result.stubs.video ? (
+                <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-4 text-center text-[11px] text-amber-300/80">
+                  스텁 영상 — 실제 생성물 아님 (자격증명/크레딧 확인)
+                </p>
+              ) : (
+                <video
+                  src={result.video_url}
+                  controls
+                  className="mt-2 w-full max-w-xs rounded-lg border border-[#2a2a31]"
+                />
+              )}
+              <p className="mt-2 break-all text-[11px] text-zinc-600">
                 {result.video_url}
               </p>
             </div>
@@ -521,6 +627,164 @@ export default function Home() {
               </p>
             </div>
           </section>
+        )}
+        </>
+        )}
+
+        {view === "library" && (
+          <section className="flex flex-col gap-4">
+            <header>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
+                콘텐츠 라이브러리
+              </h1>
+              <p className="mt-1 text-sm text-zinc-400">
+                생성한 콘텐츠를 카테고리별로 모아보고 화보·릴스를 다시 확인합니다.
+              </p>
+            </header>
+
+            {/* 카테고리 탭 */}
+            <div className="flex flex-wrap gap-1.5">
+              {["", ...CATEGORIES.map(([label]) => label)].map((t) => (
+                <button
+                  key={t || "all"}
+                  type="button"
+                  onClick={() => setLibCategory(t)}
+                  className={`rounded-full border px-3.5 py-1 text-xs transition-colors ${
+                    libCategory === t ? CHIP_ON : CHIP_OFF
+                  }`}
+                >
+                  {t || "전체"}
+                </button>
+              ))}
+            </div>
+
+            {libLoading ? (
+              <p className="py-10 text-center text-sm text-zinc-500">불러오는 중...</p>
+            ) : library.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[#2a2a31] py-14 text-center">
+                <p className="text-sm text-zinc-400">아직 생성된 콘텐츠가 없습니다.</p>
+                <button
+                  type="button"
+                  onClick={() => setView("create")}
+                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500"
+                >
+                  생성하러 가기
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {library.map((it) => (
+                  <button
+                    key={it.product_id}
+                    type="button"
+                    onClick={() => setSelected(it)}
+                    className="group flex flex-col overflow-hidden rounded-xl border border-[#2a2a31] bg-[#141417] text-left transition-colors hover:border-violet-500/50"
+                  >
+                    <div className="flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#17171b]">
+                      {it.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={it.image_url}
+                          alt={it.name ?? "화보"}
+                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        />
+                      ) : (
+                        <span className="text-xs text-zinc-600">이미지 없음</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1 p-2.5">
+                      <span className="truncate text-xs font-medium text-zinc-100">
+                        {it.name || "이름 없음"}
+                      </span>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        {it.category && (
+                          <span className="rounded bg-[#232329] px-1.5 py-0.5 text-zinc-400">
+                            {it.category}
+                          </span>
+                        )}
+                        {it.video_url && (
+                          <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-violet-300">
+                            릴스
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 라이브러리 상세 (화보/릴스/SNS) */}
+        {selected && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            onClick={() => setSelected(null)}
+          >
+            <div
+              className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[#2a2a31] bg-[#141417] p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-semibold text-zinc-100">
+                    {selected.name || "콘텐츠"}
+                  </h3>
+                  {selected.category && (
+                    <span className="text-xs text-zinc-500">{selected.category}</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:text-zinc-100"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {selected.image_url && (
+                <div className="mb-3">
+                  <p className="mb-1 text-xs font-medium text-zinc-400">화보 이미지</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selected.image_url}
+                    alt="화보"
+                    className="w-full rounded-lg border border-[#2a2a31]"
+                  />
+                </div>
+              )}
+
+              {selected.video_url && (
+                <div className="mb-3">
+                  <p className="mb-1 text-xs font-medium text-zinc-400">릴스 영상</p>
+                  <video
+                    src={selected.video_url}
+                    controls
+                    className="w-full rounded-lg border border-[#2a2a31]"
+                  />
+                </div>
+              )}
+
+              {selected.caption && (
+                <div className="border-t border-[#2a2a31] pt-3">
+                  <p className="mb-1 text-xs font-medium text-zinc-400">SNS 카피</p>
+                  <p className="text-sm text-zinc-200">{selected.caption}</p>
+                  {selected.hashtags?.length > 0 && (
+                    <p className="mt-1 text-sm text-violet-300">
+                      {selected.hashtags.join(" ")}
+                    </p>
+                  )}
+                  {selected.ad_copy && (
+                    <p className="mt-1 text-sm font-medium text-zinc-100">
+                      {selected.ad_copy}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </main>
     </div>
