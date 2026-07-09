@@ -7,6 +7,7 @@ from app.api.jobs import router as jobs_router
 from app.api.ai import router as ai_router
 from app.api.sns import router as sns_router
 from app.api.pipeline import router as pipeline_router
+from app.api.contents import router as contents_router
 from app.models.base import engine, Base
 
 Base.metadata.create_all(bind=engine)
@@ -26,3 +27,4 @@ app.include_router(jobs_router)
 app.include_router(ai_router)
 app.include_router(sns_router)
 app.include_router(pipeline_router)
+app.include_router(contents_router)

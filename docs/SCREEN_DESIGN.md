@@ -297,7 +297,7 @@
 | `POST /pipeline/run`에 `background`·`camera_motion` 필드 추가 (§2.5~2.6) ✅ | SCR-001 | 완료 |
 | `POST /product/analyze-palette` (색상 자동 추출) + 업로드 `silhouette` 필드 ✅ | SCR-001 | 완료 |
 | `GET /ai/models` | SCR-003 | 중 |
-| `GET /contents` (목록) | SCR-004 | 중 |
+| `GET /contents` (목록, `?category=` 필터) ✅ | SCR-004 | 완료 (프론트 라이브러리 뷰 연동) |
 | `PATCH /contents/{id}` (승인) | SCR-002 | 중 |
 | `PATCH /jobs/{id}` (폐기) | SCR-002 | 하 |
 | `GET /contents/{id}/export?format=` | SCR-004 | B-3와 함께 |

@@ -294,6 +294,44 @@ def test_sku_unknown_category_is_gen(client):
     assert resp.json()["sku"] == "JBL-GEN-001"
 
 
+# --- SCREEN_DESIGN §5: 콘텐츠 라이브러리 (GET /contents) ---
+
+def test_contents_lists_generated_products(client):
+    """생성 파이프라인을 거친 상품이 /contents 목록에 화보/릴스와 함께 노출된다"""
+    product_id = _upload_product(client)
+    client.post("/pipeline/run", json={"product_id": product_id})
+    resp = client.get("/contents")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    it = items[0]
+    assert it["product_id"] == product_id
+    assert it["image_url"] and it["video_url"]
+    assert it["caption"]
+
+def test_contents_empty_when_no_generation(client):
+    """업로드만 하고 생성 안 한 상품은 라이브러리에 안 나온다"""
+    _upload_product(client)
+    resp = client.get("/contents")
+    assert resp.json()["items"] == []
+
+def test_contents_filters_by_category(client):
+    """category 쿼리로 카테고리별 필터링"""
+    from PIL import Image
+    def up(cat):
+        buf = io.BytesIO()
+        Image.new("RGB", (16, 16), color=(70, 70, 70)).save(buf, format="PNG")
+        buf.seek(0)
+        pid = client.post("/product/upload", files={"file": ("c.png", buf, "image/png")},
+                          data={"category": cat}).json()["product_id"]
+        client.post("/pipeline/run", json={"product_id": pid})
+    up("상의")
+    up("하의")
+    resp = client.get("/contents", params={"category": "상의"})
+    items = resp.json()["items"]
+    assert len(items) == 1 and items[0]["category"] == "상의"
+
+
 # --- Phase 3: 영상 생성 파라미터 검증 ---
 
 def test_video_duration_range_enforced():
