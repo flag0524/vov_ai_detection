@@ -126,6 +126,19 @@
 
 ---
 
+## ADR-015. 상품 원본 보존 = flux-2 image_urls 참조 생성 (soul/standard text2image 대체) ✅
+
+- **일자**: 2026-07-09 (사용자 지시로 실증 후 반영)
+- **컨텍스트**: "등록 상품과 화보가 다르게 나온다"(#3)의 근본 원인 확정. 기존 `agent3.generate_image`는 `higgsfield-ai/soul/standard`(text2image)에 프롬프트만 보내 상품 이미지를 참조로 안 넣었다 → 글자 설명만 보고 새 옷 생성. 실측: `soul`의 `custom_reference_id`는 **인물(얼굴) 참조**라 옷걸이 상품 사진을 넣으면 의상이 무시된다(랜덤 검정 코디 확인). 반면 **`flux-2` + `image_urls:[상품URL]`은 상품(디자인·색상·레이스 패턴·실루엣)을 보존**했다 (원본 흰 레이스 블라우스+차콜 데님 스커트가 도심 스트리트 화보로 재현, 육안 확인).
+- **결정**:
+  1. **화보 이미지 생성 = `flux-2`(image_urls 참조)** — `soul/standard` 텍스트 생성 대체. 상품 이미지를 `POST /files/generate-upload-url`(presigned)→PUT로 업로드해 public_url을 얻고 `image_urls`에 주입. `resolution:"2k"`, `aspect_ratio:"9:16"`. flux-2는 동기적으로 빠르게 완료돼 파이프라인 구조 유지(custom-references 비동기 완료 대기 불필요).
+  2. **모델 얼굴 일관성(#4)은 별도 축** — flux-2 `image_urls`에 canonical 모델 참조 이미지를 함께 넣어 달성(`JBLANC_MODEL_REFERENCE_URL` 옵션). ADR-014의 얼굴 참조와 결합해 **상품+얼굴 2축 참조**로 발전.
+  3. 영상(릴스)은 `higgsfield-ai/dop/standard`(image_url) 유지 — 화보를 image-to-video로 변환하므로 화보와 자동 일치.
+- **실측 스키마**: 업로드 `/files/generate-upload-url`{content_type}→{public_url,upload_url}; 생성 `flux-2`{prompt(필수), image_urls[array URL], resolution∈1k|2k, aspect_ratio}. 알 수 없는 필드는 조용히 무시되므로 정확한 이름 필수.
+- **결과**: 상품 보존 실증 완료(`storage/results/flux_tryon.jpg`, `flux_tryon_reel.mp4`). agent3 교체 + `higgsfield_client.upload_image()` 추가. 스텁 모드/테스트 무영향(40 passed). 후속: canonical 모델 참조 등록으로 #4 완성, VOV 벤치마크 프롬프트 반영(ADR-014 ③).
+
+---
+
 ## 기록 규칙
 
 - 새 결정이 기존 결정을 뒤집으면 기존 항목을 ❌ 폐기로 바꾸고 새 ADR에서 `(ADR-XXX 대체)`를 명시한다.

@@ -1,9 +1,14 @@
-# Agent 3: Higgsfield Soul 모델로 패션 화보 이미지 생성 (자격증명 없으면 스텁 반환)
+# Agent 3: Higgsfield로 패션 화보 이미지 생성 (상품 보존 = flux-2 image_urls 참조, 자격증명 없으면 스텁)
+import os
 import uuid
 
 from agents import higgsfield_client as hf
 
 SOUL_IMAGE_MODEL = "higgsfield-ai/soul/standard"
+# 상품 원본 보존: flux-2에 상품 이미지를 image_urls 참조로 주입 (soul/standard 텍스트 생성은 상품 무시)
+REFERENCE_IMAGE_MODEL = "flux-2"
+# (선택) 모델 얼굴 일관성(#4): 값이 있으면 image_urls에 함께 넣어 동일 모델 유지. 미설정 시 상품만.
+MODEL_REFERENCE_URL = os.getenv("JBLANC_MODEL_REFERENCE_URL", "")
 
 
 def create_soul_id(model_attrs: dict, reference_image_path: str) -> dict:
@@ -23,23 +28,31 @@ def create_soul_id(model_attrs: dict, reference_image_path: str) -> dict:
 
 
 def generate_image(prompt: str, soul_reference_id: str, product_image_path: str, model_id: str) -> dict:
-    """Higgsfield Soul 모델로 패션 화보 이미지를 생성한다.
-    자격증명 미설정 시 스텁 URL을 반환한다."""
+    """flux-2 참조 생성으로 패션 화보를 만든다. 상품 이미지를 image_urls 참조로 주입해
+    상품 원본(디자인·색상·패턴)을 보존한다. 자격증명 미설정/실패 시 스텁으로 강등한다."""
+    def _stub(reason: str = "") -> dict:
+        out = {"image_url": f"https://stub.jblanc.ai/images/{uuid.uuid4().hex}.jpg",
+               "job_id": f"STUB_JOB_{uuid.uuid4().hex[:8]}", "stub": True}
+        if reason:
+            out["reason"] = reason
+        return out
+
     if not hf.credentials_available():
-        stub_url = f"https://stub.jblanc.ai/images/{uuid.uuid4().hex}.jpg"
-        return {"image_url": stub_url, "job_id": f"STUB_JOB_{uuid.uuid4().hex[:8]}", "stub": True}
+        return _stub()
 
     try:
-        result = hf.generate(
-            SOUL_IMAGE_MODEL,
-            {
-                "prompt": prompt,
-                # 릴스/스토리 규격(9:16) — 영상(DoP)이 입력 이미지 비율을 따라가므로
-                # 이미지 단계에서 9:16으로 생성해야 tests.md Phase 3 규격 충족
-                "aspect_ratio": "9:16",
-                "resolution": "720p",
-            },
-        )
+        # 상품 이미지를 Higgsfield에 업로드해 참조 URL 확보 (상품 보존의 핵심)
+        image_urls = []
+        if product_image_path and os.path.exists(product_image_path):
+            image_urls.append(hf.upload_image(product_image_path))
+        if MODEL_REFERENCE_URL:  # 모델 얼굴 일관성(#4) 옵션
+            image_urls.append(MODEL_REFERENCE_URL)
+
+        payload = {"prompt": prompt, "aspect_ratio": "9:16", "resolution": "2k"}
+        if image_urls:
+            payload["image_urls"] = image_urls  # flux-2 참조 이미지
+
+        result = hf.generate(REFERENCE_IMAGE_MODEL, payload)
         images = result.get("images") or []
         if not images:
             raise hf.HiggsfieldError(f"응답에 images 없음: {result}")
@@ -50,10 +63,4 @@ def generate_image(prompt: str, soul_reference_id: str, product_image_path: str,
         }
     except hf.HiggsfieldError as e:
         # 크레딧 부족 등 API 실패 시 파이프라인을 죽이지 않고 스텁으로 강등
-        stub_url = f"https://stub.jblanc.ai/images/{uuid.uuid4().hex}.jpg"
-        return {
-            "image_url": stub_url,
-            "job_id": f"STUB_JOB_{uuid.uuid4().hex[:8]}",
-            "stub": True,
-            "reason": str(e),
-        }
+        return _stub(reason=str(e))
