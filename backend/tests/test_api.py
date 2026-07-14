@@ -165,8 +165,9 @@ def test_prompt_locks_korean_proportions_and_reference_garment(client):
     assert "height 169-170cm" in p
     assert "7 to 7.5 heads tall" in p
     assert "NOT a 9-head figure" in p
-    # 자연스러운 보행 (발 미끄러짐 방지)
+    # 자연스러운 보행 (발 미끄러짐 방지) + 신발 착용 (맨발 결함 대응)
     assert "no sliding effect" in p
+    assert "never barefoot" in p
     # 'AI스러움' 제거 — 실사 화보 품질
     assert "35mm lens" in p
     assert "NOT CGI looking" in p
@@ -187,6 +188,9 @@ def test_negative_prompt_blocks_garment_alteration():
     neg = generate_photoshoot_prompt({}, {})["negative_prompt"]
     for term in ("changed sleeve length", "altered garment silhouette", "added sleeves",
                  "changed neckline", "changed hem length", "different garment"):
+        assert term in neg
+    # 맨발 결함(파일럿 4장 중 2장) 대응
+    for term in ("barefoot", "bare feet", "missing shoes"):
         assert term in neg
 
 

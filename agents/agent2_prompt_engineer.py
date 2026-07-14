@@ -16,7 +16,9 @@ NATURALNESS_PROMPT = (
 # 동작(Action) — 자연스러운 보행. 발 미끄러짐(sliding) 방지는 프롬프트+네거티브로만 가능
 ACTION_PROMPT = (
     "Action: naturally walking towards the camera, realistic human gait, "
-    "fluid leg movement, feet firmly planted on the ground, no sliding effect."
+    "fluid leg movement, feet firmly planted on the ground, no sliding effect. "
+    "Footwear: always wearing minimal modern shoes suited to the scene "
+    "(clean sandals, mules or sneakers) — never barefoot."
 )
 
 # 체형 비율(Appearance) — 인위적으로 길어 보이는 8등신 과장을 막고 실제 체형으로 고정
@@ -40,6 +42,7 @@ NATURALNESS_NEGATIVE = (
     "dead eyes, asymmetric distorted face, broken joints, distorted fingers, "
     "unnatural neck angle, uncanny valley, "
     "distorted limbs, unnatural walking, sliding feet, floating, "
+    "barefoot, bare feet, missing shoes, "
     "exaggerated body proportions, unnaturally long legs, stretched body, "
     "distorted head-to-body ratio, doll-like proportions"
 )
