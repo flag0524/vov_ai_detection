@@ -217,6 +217,27 @@ def test_negative_prompt_is_actually_sent_to_higgsfield(monkeypatch):
     assert sent["payload"]["negative_prompt"] == "changed sleeve length"
 
 
+def test_multi_angle_model_references_are_all_sent(monkeypatch):
+    """전속 모델 다각도 참조(정면·45도·측면)가 image_urls에 모두 실려야 한다.
+    (LoRA 대신 flux-2 다각도 참조로 얼굴 고정 정확도를 올리는 방식 — A/B 실측)"""
+    from agents import agent3_fashion_model as a3
+    from agents import higgsfield_client as hf
+
+    sent = {}
+    monkeypatch.setattr(hf, "credentials_available", lambda: True)
+    monkeypatch.setattr(hf, "generate", lambda m, p, **k: sent.update(payload=p) or
+                        {"images": [{"url": "https://x/y.png"}], "request_id": "r"})
+    monkeypatch.setattr(hf, "upload_image", lambda path, **k: "https://x/product.jpg")
+    monkeypatch.setattr(a3, "MODEL_REFERENCE_URL", "https://x/front.jpg, https://x/45.jpg, https://x/prof.jpg")
+    monkeypatch.setattr(a3.os.path, "exists", lambda p: True)
+
+    a3.generate_image("p", "", "/tmp/product.jpg", "m1")
+    urls = sent["payload"]["image_urls"]
+    # 상품 참조가 먼저, 그 뒤 모델 다각도 3장
+    assert urls == ["https://x/product.jpg", "https://x/front.jpg",
+                    "https://x/45.jpg", "https://x/prof.jpg"]
+
+
 def test_identity_lock_only_when_model_reference_present():
     """전속 모델 참조가 있을 때만 identity-lock 절을 붙인다 (모델 참조의 흰 티셔츠 혼입 방지)"""
     from agents.agent3_fashion_model import apply_identity_lock

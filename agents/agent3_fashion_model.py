@@ -7,8 +7,14 @@ from agents import higgsfield_client as hf
 SOUL_IMAGE_MODEL = "higgsfield-ai/soul/standard"
 # 상품 원본 보존: flux-2에 상품 이미지를 image_urls 참조로 주입 (soul/standard 텍스트 생성은 상품 무시)
 REFERENCE_IMAGE_MODEL = "flux-2"
-# (선택) 모델 얼굴 일관성(#4): 값이 있으면 image_urls에 함께 넣어 동일 모델 유지. 미설정 시 상품만.
+# 모델 얼굴 일관성(#4): 전속 모델 참조 URL. 쉼표로 여러 장(정면·45도·측면) 지정 가능.
+# 다각도를 넣으면 얼굴 고정 정확도가 올라간다 (A/B 실측 확인, 상품 참조 희석 없음).
 MODEL_REFERENCE_URL = os.getenv("JBLANC_MODEL_REFERENCE_URL", "")
+
+
+def model_reference_urls() -> list[str]:
+    """쉼표로 구분된 전속 모델 참조 URL 목록. 미설정 시 빈 리스트."""
+    return [u.strip() for u in MODEL_REFERENCE_URL.split(",") if u.strip()]
 
 
 def create_soul_id(model_attrs: dict, reference_image_path: str) -> dict:
@@ -60,10 +66,10 @@ def generate_image(prompt: str, soul_reference_id: str, product_image_path: str,
         image_urls = []
         if product_image_path and os.path.exists(product_image_path):
             image_urls.append(hf.upload_image(product_image_path))
-        if MODEL_REFERENCE_URL:  # 모델 얼굴 일관성(#4)
-            image_urls.append(MODEL_REFERENCE_URL)
+        model_refs = model_reference_urls()  # 정면·45도·측면 다각도 참조
+        image_urls.extend(model_refs)
 
-        prompt = apply_identity_lock(prompt, has_model_reference=len(image_urls) > 1)
+        prompt = apply_identity_lock(prompt, has_model_reference=bool(model_refs))
 
         payload = {"prompt": prompt, "aspect_ratio": "9:16", "resolution": "2k"}
         if negative_prompt:
