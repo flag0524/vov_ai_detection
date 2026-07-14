@@ -62,7 +62,6 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
 
     from agents.agent2_prompt_engineer import generate_photoshoot_prompt, resolve_background
     from agents.agent3_fashion_model import create_soul_id, generate_image
-    from agents.agent4_video_creator import generate_video
     from agents.agent5_marketing import generate_sns_content
 
     # 배경/씨: 프리셋 키/커스텀 텍스트를 씨 문구로 해석 (모델·상품은 고정, 배경만 변경)
@@ -125,10 +124,12 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     quality = validate_generation(image_path, generated_path or image_path)
     attempts = 1
 
-    # Step 5: 영상 생성 (카메라 동작 = 자연스러운 연출 제어)
-    video_result = generate_video(image_url=image_result["image_url"], camera_motion=req.camera_motion)
+    # 영상은 여기서 생성하지 않는다 (ADR-013).
+    # 화보를 사람이 확인한 뒤 POST /pipeline/video로 트리거한다.
+    # 이유: ① 재생성 시 옛 화보 기반 영상이 버려져 크레딧 낭비 ② 영상은 10분 이상 걸려
+    # 동기 파이프라인이 타임아웃된다.
 
-    # Step 6: SNS 카피
+    # Step 5: SNS 카피
     sns_result = generate_sns_content(product_meta)
 
     processing_time_sec = round(time.time() - start_time, 3)
@@ -146,17 +147,12 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
             "attempts": attempts,
         },
     )
-    vid_job = GenerationJob(
-        job_id=str(uuid.uuid4()), type="video", product_id=product.product_id,
-        model_id=ai_model.model_id, status="done",
-        result_refs={"video_url": video_result["video_url"], "camera_motion": req.camera_motion},
-    )
     content = Content(
         content_id=str(uuid.uuid4()), source_ref=product.product_id,
         caption=sns_result.get("caption", ""), hashtags=sns_result.get("hashtags", []),
         ad_copy=sns_result.get("ad_copy", ""), channel="instagram", status="draft",
     )
-    db.add_all([img_job, vid_job, content])
+    db.add_all([img_job, content])
     db.commit()
 
     return {
@@ -169,13 +165,49 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
         "quality": quality,
         "regeneration_attempts": attempts,
         "processing_time_sec": processing_time_sec,
-        "video_url": video_result["video_url"],
+        "video_url": None,  # 영상은 화보 확인 후 POST /pipeline/video로 생성 (ADR-013)
         "camera_motion": req.camera_motion,
         "model_key": selected_model["key"],
         "model_name": selected_model["name"],
         "sns": sns_result,
-        "stubs": {
-            "image": image_result.get("stub", False),
-            "video": video_result.get("stub", False),
-        },
+        "stubs": {"image": image_result.get("stub", False), "video": False},
+    }
+
+
+class VideoRequest(BaseModel):
+    product_id: str
+    camera_motion: str = "dolly_in"
+
+
+@router.post("/video")
+def generate_reel(req: VideoRequest, db: Session = Depends(get_db)):
+    """화보를 확인한 뒤 릴스를 생성한다 (ADR-013 — 영상은 승인 이후로 이연).
+    해당 상품의 최신 화보 이미지를 image-to-video로 변환하므로 화보와 자동 일치한다."""
+    img_job = (
+        db.query(GenerationJob)
+        .filter(GenerationJob.product_id == req.product_id, GenerationJob.type == "image")
+        .order_by(GenerationJob.created_at.desc())
+        .first()
+    )
+    if not img_job or not (img_job.result_refs or {}).get("image_url"):
+        raise HTTPException(status_code=404, detail="생성된 화보가 없습니다")
+
+    from agents.agent4_video_creator import generate_video
+
+    image_url = img_job.result_refs["image_url"]
+    video_result = generate_video(image_url=image_url, camera_motion=req.camera_motion)
+
+    vid_job = GenerationJob(
+        job_id=str(uuid.uuid4()), type="video", product_id=req.product_id,
+        model_id=img_job.model_id, status="done",
+        result_refs={"video_url": video_result["video_url"], "camera_motion": req.camera_motion},
+    )
+    db.add(vid_job)
+    db.commit()
+
+    return {
+        "product_id": req.product_id,
+        "video_url": video_result["video_url"],
+        "camera_motion": req.camera_motion,
+        "stub": video_result.get("stub", False),
     }

@@ -68,7 +68,9 @@ def generate_video(image_url: str, duration_sec: int = 10, aspect_ratio: str = "
                 "negative_prompt": NATURALNESS_MOTION_NEGATIVE,
                 "duration": duration_sec,
             },
-            timeout_sec=600,  # 영상은 이미지보다 오래 걸림
+            # 영상은 이미지보다 훨씬 오래 걸린다. 실측 600초 초과 사례가 있어 상향.
+            # (파이프라인에서 분리해 화보 확인 후 트리거하므로 긴 대기가 허용된다 — ADR-013)
+            timeout_sec=1200,
         )
         video = result.get("video") or {}
         video_url = video.get("url") if isinstance(video, dict) else video

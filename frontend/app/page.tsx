@@ -18,7 +18,7 @@ type PipelineResult = {
     overall_pass: boolean;
     action: string;
   };
-  video_url: string;
+  video_url: string | null; // ADR-013 — 영상은 화보 확인 후 별도 생성
   camera_motion?: string;
   model_key?: string;
   model_name?: string;
@@ -142,6 +142,30 @@ export default function Home() {
   // 전속 모델 선택 — 선택한 모델의 다각도 참조로 피팅한다
   const [models, setModels] = useState<FashionModel[]>([]);
   const [modelKey, setModelKey] = useState<string>("");
+  // 릴스는 화보 확인 후 별도 생성 (ADR-013) — 수 분 걸린다
+  const [reelUrl, setReelUrl] = useState<string | null>(null);
+  const [reelStage, setReelStage] = useState<"idle" | "running" | "error">("idle");
+
+  async function handleGenerateReel() {
+    if (!result) return;
+    setReelStage("running");
+    try {
+      const res = await fetch(`${API_BASE}/pipeline/video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: result.product_id,
+          camera_motion: camMotion,
+        }),
+      });
+      if (!res.ok) throw new Error(`릴스 생성 실패 (${res.status})`);
+      const data = await res.json();
+      setReelUrl(data.video_url);
+      setReelStage("idle");
+    } catch {
+      setReelStage("error");
+    }
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/ai/models`)
@@ -210,6 +234,8 @@ export default function Home() {
     if (!file) return;
     setError(null);
     setResult(null);
+    setReelUrl(null);
+    setReelStage("idle");
 
     try {
       setStage("uploading");
@@ -670,22 +696,41 @@ export default function Home() {
               </p>
             </div>
 
+            {/* 릴스 — 화보를 확인한 뒤 생성 (ADR-013) */}
             <div className="border-t border-[#2a2a31] pt-4">
-              <h2 className="text-base font-semibold text-zinc-100">릴스 영상</h2>
-              {result.stubs.video ? (
-                <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-4 text-center text-[11px] text-amber-300/80">
-                  스텁 영상 — 실제 생성물 아님 (자격증명/크레딧 확인)
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-zinc-100">릴스 영상</h2>
+                {!reelUrl && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateReel}
+                    disabled={reelStage === "running"}
+                    className="rounded-lg bg-violet-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+                  >
+                    {reelStage === "running" ? "생성 중... (수 분)" : "이 화보로 릴스 생성"}
+                  </button>
+                )}
+              </div>
+
+              {reelUrl ? (
+                <>
+                  <video
+                    src={reelUrl}
+                    controls
+                    className="mt-2 w-full max-w-xs rounded-lg border border-[#2a2a31]"
+                  />
+                  <p className="mt-2 break-all text-[11px] text-zinc-600">{reelUrl}</p>
+                </>
+              ) : reelStage === "error" ? (
+                <p className="mt-2 text-sm text-red-400">
+                  릴스 생성에 실패했습니다. 다시 시도해 주세요.
                 </p>
               ) : (
-                <video
-                  src={result.video_url}
-                  controls
-                  className="mt-2 w-full max-w-xs rounded-lg border border-[#2a2a31]"
-                />
+                <p className="mt-2 text-[11px] text-zinc-500">
+                  화보가 마음에 들면 릴스를 생성하세요. 영상은 크레딧이 비싸고 수 분 걸려,
+                  화보 확인 후에만 만듭니다.
+                </p>
               )}
-              <p className="mt-2 break-all text-[11px] text-zinc-600">
-                {result.video_url}
-              </p>
             </div>
 
             <div className="border-t border-[#2a2a31] pt-4">

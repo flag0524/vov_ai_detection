@@ -73,9 +73,9 @@ def test_pipeline_run_full_e2e_stub(client):
     assert resp.status_code == 200
     body = resp.json()
 
-    # 산출물 3종
+    # ADR-013: 파이프라인은 화보 + SNS 카피까지. 영상은 화보 확인 후 별도 트리거
     assert body["image_url"]
-    assert body["video_url"]
+    assert body["video_url"] is None
     assert body["sns"]["caption"]
 
     # 품질 게이트 (동일 이미지 비교라 통과해야 함)
@@ -88,7 +88,23 @@ def test_pipeline_run_full_e2e_stub(client):
 
     # 스텁 플래그 명시 (실생성물로 오인 방지)
     assert body["stubs"]["image"] is True
-    assert body["stubs"]["video"] is True
+
+
+def test_reel_generated_only_after_photoshoot(client):
+    """ADR-013: 릴스는 화보 확인 후 POST /pipeline/video로 생성한다"""
+    product_id = _upload_product(client)
+    # 화보 없이 영상 요청 → 404
+    assert client.post("/pipeline/video", json={"product_id": product_id}).status_code == 404
+    # 화보 생성 후에는 릴스 생성 가능
+    client.post("/pipeline/run", json={"product_id": product_id})
+    resp = client.post("/pipeline/video", json={"product_id": product_id, "camera_motion": "orbit"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["video_url"]
+    assert body["camera_motion"] == "orbit"
+    # 라이브러리에도 영상이 붙는다
+    items = client.get("/contents").json()["items"]
+    assert items[0]["video_url"] == body["video_url"]
 
 
 def test_pipeline_run_404_for_missing_product(client):
@@ -444,8 +460,10 @@ def test_contents_lists_generated_products(client):
     assert len(items) == 1
     it = items[0]
     assert it["product_id"] == product_id
-    assert it["image_url"] and it["video_url"]
+    assert it["image_url"]
     assert it["caption"]
+    # ADR-013: 영상은 화보 확인 후 생성하므로 이 시점엔 없다
+    assert it["video_url"] is None
 
 def test_contents_empty_when_no_generation(client):
     """업로드만 하고 생성 안 한 상품은 라이브러리에 안 나온다"""
