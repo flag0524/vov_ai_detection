@@ -135,7 +135,17 @@
   2. **모델 얼굴 일관성(#4)은 별도 축** — flux-2 `image_urls`에 canonical 모델 참조 이미지를 함께 넣어 달성(`JBLANC_MODEL_REFERENCE_URL` 옵션). ADR-014의 얼굴 참조와 결합해 **상품+얼굴 2축 참조**로 발전.
   3. 영상(릴스)은 `higgsfield-ai/dop/standard`(image_url) 유지 — 화보를 image-to-video로 변환하므로 화보와 자동 일치.
 - **실측 스키마**: 업로드 `/files/generate-upload-url`{content_type}→{public_url,upload_url}; 생성 `flux-2`{prompt(필수), image_urls[array URL], resolution∈1k|2k, aspect_ratio}. 알 수 없는 필드는 조용히 무시되므로 정확한 이름 필수.
-- **결과**: 상품 보존 실증 완료(`storage/results/flux_tryon.jpg`, `flux_tryon_reel.mp4`). agent3 교체 + `higgsfield_client.upload_image()` 추가. 스텁 모드/테스트 무영향(40 passed). 후속: canonical 모델 참조 등록으로 #4 완성, VOV 벤치마크 프롬프트 반영(ADR-014 ③).
+- **결과**: 상품 보존 실증 완료(`storage/results/flux_tryon.jpg`, `flux_tryon_reel.mp4`). agent3 교체 + `higgsfield_client.upload_image()` 추가. 스텁 모드/테스트 무영향.
+
+### ADR-015 후속: 전속 모델 canonical 참조 등록 완료 (ADR-014 ①② 이행) ✅
+
+- **일자**: 2026-07-09 (후보 4장 생성 → 사용자가 **A** 선정)
+- **모델**: 후보 A — 긴 생머리, 차분한 우아함. 원본 `storage/model/canonical_model.jpg` (중립 흰 티셔츠 + 무지 스튜디오 배경 = 의상 혼입 방지용)
+- **등록 URL** (`.env`의 `JBLANC_MODEL_REFERENCE_URL`, .env는 gitignore이므로 여기에 보존):
+  `https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/d93a5211-dd77-4e67-a677-ba3ab177e674.jpeg`
+- **동작**: agent3가 `image_urls = [상품 참조, 모델 참조]` 2장을 flux-2에 넣고, `apply_identity_lock()`이 "얼굴·헤어·정체성은 모델 참조에서만, 의상은 상품 참조에서" 절을 프롬프트에 덧붙인다. **이 절이 없으면 모델 참조의 흰 티셔츠가 결과물에 섞인다(실측).**
+- **검증**: 실제 코드 경로로 생성 → `storage/results/canonical_test.jpg`. 얼굴=후보 A 동일, 의상=원본 레이스 블라우스+데님 스커트 보존, 모델 참조의 티셔츠·스튜디오 배경 미혼입, 배경=`concrete_architecture` 프리셋. **상품 보존(#3) + 모델 일관성(#4) 동시 달성.**
+- **모델 교체 시**: 새 포트레이트를 업로드해 `JBLANC_MODEL_REFERENCE_URL`만 교체하면 된다 (코드 변경 불필요).
 
 ---
 

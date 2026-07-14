@@ -27,6 +27,20 @@ def create_soul_id(model_attrs: dict, reference_image_path: str) -> dict:
     return {"soul_reference_id": stub_id, "stub": True, "reason": reason}
 
 
+def apply_identity_lock(prompt: str, has_model_reference: bool) -> str:
+    """참조가 2장(상품 + 전속 모델)일 때, 어느 참조에서 무엇을 가져올지 명시한다.
+    이 절이 없으면 모델 참조의 흰 티셔츠·스튜디오 배경이 결과물에 섞인다 (실측 확인)."""
+    if not has_model_reference:
+        return prompt
+    return (
+        f"{prompt} Identity lock: the model's face, hair and identity must exactly match "
+        f"the person in the model reference image (the plain studio portrait). "
+        f"Take ONLY the face and identity from that reference — the outfit must come from "
+        f"the product reference image. Do NOT copy the plain white t-shirt or the studio "
+        f"background from the model reference."
+    )
+
+
 def generate_image(prompt: str, soul_reference_id: str, product_image_path: str, model_id: str) -> dict:
     """flux-2 참조 생성으로 패션 화보를 만든다. 상품 이미지를 image_urls 참조로 주입해
     상품 원본(디자인·색상·패턴)을 보존한다. 자격증명 미설정/실패 시 스텁으로 강등한다."""
@@ -45,12 +59,14 @@ def generate_image(prompt: str, soul_reference_id: str, product_image_path: str,
         image_urls = []
         if product_image_path and os.path.exists(product_image_path):
             image_urls.append(hf.upload_image(product_image_path))
-        if MODEL_REFERENCE_URL:  # 모델 얼굴 일관성(#4) 옵션
+        if MODEL_REFERENCE_URL:  # 모델 얼굴 일관성(#4)
             image_urls.append(MODEL_REFERENCE_URL)
+
+        prompt = apply_identity_lock(prompt, has_model_reference=len(image_urls) > 1)
 
         payload = {"prompt": prompt, "aspect_ratio": "9:16", "resolution": "2k"}
         if image_urls:
-            payload["image_urls"] = image_urls  # flux-2 참조 이미지
+            payload["image_urls"] = image_urls  # flux-2 참조 이미지 (상품 → 모델 순)
 
         result = hf.generate(REFERENCE_IMAGE_MODEL, payload)
         images = result.get("images") or []

@@ -180,6 +180,19 @@ def test_negative_prompt_blocks_ai_artifacts_and_distortion():
         assert term in neg
 
 
+def test_identity_lock_only_when_model_reference_present():
+    """전속 모델 참조가 있을 때만 identity-lock 절을 붙인다 (모델 참조의 흰 티셔츠 혼입 방지)"""
+    from agents.agent3_fashion_model import apply_identity_lock
+    base = "A fashion photo."
+    # 상품 참조만 있으면 그대로
+    assert apply_identity_lock(base, has_model_reference=False) == base
+    # 모델 참조가 있으면 얼굴만 가져오고 의상은 상품 참조에서 가져오도록 명시
+    locked = apply_identity_lock(base, has_model_reference=True)
+    assert "Identity lock" in locked
+    assert "ONLY the face and identity" in locked
+    assert "Do NOT copy the plain white t-shirt" in locked
+
+
 def test_brand_name_defaults_to_jblanc():
     """브랜드명은 상수로 분리 — ADR-014 기준 기본값 JBLANC (VOV는 벤치마크, 주입 금지)"""
     from agents.agent2_prompt_engineer import BRAND_NAME, generate_photoshoot_prompt
