@@ -45,11 +45,14 @@ NATURALNESS_NEGATIVE = (
 )
 
 # TRD §5 — 상품 원본 보존 + 품질 공통 지시어
+# 의상 변형 차단은 실측 결함 기반: 파일럿에서 캡소매가 긴소매로 바뀌는 사례가 나옴
 _BASE_NEGATIVE = (
     "different face, identity change, bad anatomy, extra fingers, unnatural body, "
     "plastic skin, AI generated look, AI artifacts, artificial, cartoon, anime, "
     "low quality, messy background, "
-    "distorted clothing, wrong product details, altered product design, distorted logo"
+    "distorted clothing, wrong product details, altered product design, distorted logo, "
+    "changed sleeve length, altered garment silhouette, added sleeves, removed sleeves, "
+    "changed neckline, changed hem length, restyled outfit, different garment"
 )
 
 # SCREEN_DESIGN §2.6 — 배경/씨 프리셋 (모델·상품 고정, 배경만 자유 변수)

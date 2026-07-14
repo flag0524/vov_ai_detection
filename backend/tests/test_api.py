@@ -181,6 +181,38 @@ def test_negative_prompt_blocks_ai_artifacts_and_distortion():
         assert term in neg
 
 
+def test_negative_prompt_blocks_garment_alteration():
+    """의상 변형 차단 — 파일럿에서 캡소매가 긴소매로 바뀐 실측 결함 대응"""
+    from agents.agent2_prompt_engineer import generate_photoshoot_prompt
+    neg = generate_photoshoot_prompt({}, {})["negative_prompt"]
+    for term in ("changed sleeve length", "altered garment silhouette", "added sleeves",
+                 "changed neckline", "changed hem length", "different garment"):
+        assert term in neg
+
+
+def test_negative_prompt_is_actually_sent_to_higgsfield(monkeypatch):
+    """회귀: negative_prompt가 flux-2 페이로드에 실제로 실려야 한다.
+    (예전엔 agent2가 만들기만 하고 agent3가 안 보내서 네거티브가 전부 무효였음)"""
+    from agents import agent3_fashion_model as a3
+    from agents import higgsfield_client as hf
+
+    sent = {}
+
+    def fake_generate(model_id, payload, **kw):
+        sent["model_id"] = model_id
+        sent["payload"] = payload
+        return {"images": [{"url": "https://example.com/x.png"}], "request_id": "r1"}
+
+    monkeypatch.setattr(hf, "credentials_available", lambda: True)
+    monkeypatch.setattr(hf, "generate", fake_generate)
+    monkeypatch.setattr(a3, "MODEL_REFERENCE_URL", "")
+
+    r = a3.generate_image("a prompt", "", "", "m1", negative_prompt="changed sleeve length")
+    assert r["stub"] is False
+    assert sent["model_id"] == "flux-2"
+    assert sent["payload"]["negative_prompt"] == "changed sleeve length"
+
+
 def test_identity_lock_only_when_model_reference_present():
     """전속 모델 참조가 있을 때만 identity-lock 절을 붙인다 (모델 참조의 흰 티셔츠 혼입 방지)"""
     from agents.agent3_fashion_model import apply_identity_lock

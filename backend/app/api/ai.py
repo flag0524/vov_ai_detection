@@ -101,6 +101,7 @@ def generate_image(req: ImageGenerateRequest, db: Session = Depends(get_db)):
         soul_reference_id=ai_model.soul_reference_id,
         product_image_path=product.image_ref or "",
         model_id=req.model_id,
+        negative_prompt=prompt_result["negative_prompt"],
     )
 
     job = GenerationJob(

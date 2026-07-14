@@ -105,7 +105,10 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
 
     # Step 3: 프롬프트 + 이미지 생성 (1회)
     prompt_result = generate_photoshoot_prompt(product_meta, model_attrs, scene)
-    image_result = generate_image(prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id)
+    image_result = generate_image(
+        prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id,
+        negative_prompt=prompt_result["negative_prompt"],
+    )
 
     # Step 4: 품질 검증 — SSIM은 정보성 점수 (ADR-011, 2026-07-05 사용자 결정)
     # 실생성물은 다운로드해 원본과 실제 비교하고, 미달 시 manual_review로 표시만 한다
