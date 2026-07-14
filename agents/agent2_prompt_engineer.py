@@ -1,4 +1,9 @@
 # Agent 2: 상품 정보와 모델 속성으로 Higgsfield 생성 프롬프트를 규칙 기반 템플릿으로 작성 (ADR-012)
+import os
+
+# 생성물에 들어갈 브랜드명. ADR-014 기준 콘텐츠는 JBLANC 계정용이고 VOV는 벤치마크(주입 금지)라
+# 기본값을 JBLANC로 둔다. 바꾸려면 이 상수/환경변수만 교체.
+BRAND_NAME = os.getenv("JBLANC_BRAND_NAME", "JBLANC")
 
 # PRD FR-7 / TRD §5 — 동작·표정 자연스러움(Naturalness) 지시어 (이미지)
 NATURALNESS_PROMPT = (
@@ -8,28 +13,43 @@ NATURALNESS_PROMPT = (
     "distribution, relaxed hands, accurate fingers."
 )
 
-# 체형 비율 지시어 — 인위적으로 길어 보이는 8등신 과장을 막고 한국인 표준 체형으로 고정
-# (물리 엔진 보정 레이어는 생성 API 위에 만들 수 없으므로 프롬프트/네거티브 + 검수로 관리)
-PROPORTION_PROMPT = (
-    "Body: realistic Korean adult female proportions, natural head-to-body ratio "
-    "(about 7 heads tall), natural leg length, grounded balanced stance, "
-    "true-to-life shoulder width."
+# 동작(Action) — 자연스러운 보행. 발 미끄러짐(sliding) 방지는 프롬프트+네거티브로만 가능
+ACTION_PROMPT = (
+    "Action: naturally walking towards the camera, realistic human gait, "
+    "fluid leg movement, feet firmly planted on the ground, no sliding effect."
 )
 
-# PRD FR-7 / TRD §5 — Naturalness Negative Prompt (이미지) + 비율 왜곡 방지
+# 체형 비율(Appearance) — 인위적으로 길어 보이는 8등신 과장을 막고 실제 체형으로 고정
+# (물리 엔진 보정 레이어는 생성 API 위에 만들 수 없으므로 프롬프트/네거티브 + 검수로 관리)
+PROPORTION_PROMPT = (
+    "Appearance: realistic Korean adult female body proportions, natural head-to-body ratio "
+    "(about 7 heads tall), average height for a fashion model (not excessively tall), "
+    "natural leg length, true-to-life shoulder width, high-end editorial look."
+)
+
+# 기술(Technical) — 실사 화보 품질. 'AI스러움' 제거
+TECHNICAL_PROMPT = (
+    "Technical: 8k resolution, shot on 35mm lens, cinematic lighting, photorealistic, "
+    "high-quality editorial photography, Instagram-ready aesthetic, "
+    "extreme detail on fabric texture, NOT CGI looking."
+)
+
+# PRD FR-7 / TRD §5 — Naturalness Negative Prompt (이미지) + 비율/보행/AI아티팩트 방지
 NATURALNESS_NEGATIVE = (
     "stiff pose, unnatural facial expression, frozen face, awkward smile, "
     "dead eyes, asymmetric distorted face, broken joints, distorted fingers, "
     "unnatural neck angle, uncanny valley, "
-    "exaggerated body proportions, unnaturally elongated legs, stretched torso, "
-    "distorted head-to-body ratio, doll-like proportions, floating feet"
+    "distorted limbs, unnatural walking, sliding feet, floating, "
+    "exaggerated body proportions, unnaturally long legs, stretched body, "
+    "distorted head-to-body ratio, doll-like proportions"
 )
 
 # TRD §5 — 상품 원본 보존 + 품질 공통 지시어
 _BASE_NEGATIVE = (
     "different face, identity change, bad anatomy, extra fingers, unnatural body, "
-    "plastic skin, AI generated look, distorted clothing, wrong product details, "
-    "altered product design, distorted logo"
+    "plastic skin, AI generated look, AI artifacts, artificial, cartoon, anime, "
+    "low quality, messy background, "
+    "distorted clothing, wrong product details, altered product design, distorted logo"
 )
 
 # SCREEN_DESIGN §2.6 — 배경/씨 프리셋 (모델·상품 고정, 배경만 자유 변수)
@@ -56,6 +76,10 @@ PRESET_SCENES = {
     "stone_courtyard": (
         "white stone courtyard with minimal modern architecture, crisp summer shadows, "
         "quiet contemporary atmosphere"
+    ),
+    "concrete_architecture": (
+        "sophisticated sun-drenched modern architectural space, midsummer atmosphere, "
+        "soft natural shadows, minimalist concrete texture, clean geometric lines"
     ),
 }
 _DEFAULT_PRESET = "studio_white"
@@ -91,17 +115,17 @@ def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background
 
     # flux-2에 상품 이미지를 image_urls 참조로 넣으므로(ADR-015), 프롬프트도 "참조 이미지의 그 옷"을
     # 명시해 상품 보존을 강제한다 (실증에서 이 문구로 원본 재현 성공).
+    # 구조: Subject → Action → Appearance → Background → Technical (사용자 지정 템플릿)
     prompt = (
-        f"Premium fashion campaign photo for JBLANC brand. "
-        f"A Korean female fashion model ({model_desc}) wearing the exact garment shown in the "
-        f"reference image"
+        f"Subject: a professional Korean female fashion model ({model_desc}) for {BRAND_NAME}, "
+        f"consistent face and body shape, wearing the exact garment shown in the reference image"
         f"{f' ({product_name})' if product_name else ''} — {product_desc}, "
+        f"minimal lines and modern style, "
         f"preserving its design, color, pattern, fabric texture and logo exactly. "
-        f"Scene: {background}. "
-        f"Lighting: soft natural light. "
-        f"Camera: 85mm fashion photography, high resolution, realistic texture. "
-        f"Style: luxury Korean fashion magazine editorial. "
+        f"{ACTION_PROMPT} "
         f"{PROPORTION_PROMPT} "
+        f"Background: {background}. "
+        f"{TECHNICAL_PROMPT} "
         f"{NATURALNESS_PROMPT}"
     )
 

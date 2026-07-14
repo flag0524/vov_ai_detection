@@ -31,7 +31,8 @@ NATURALNESS_MOTION_NEGATIVE = (
     "frame jitter, face morphing, twitching face, expression flickering, "
     "limb distortion, teleporting body parts, frozen expression, "
     "exaggerated body proportions, unnaturally elongated legs, stretched torso, "
-    "warping clothing, garment texture flickering, changing outfit details"
+    "warping clothing, garment texture flickering, changing outfit details, "
+    "cartoon, anime, CGI look, AI artifacts, artificial, low quality"
 )
 
 

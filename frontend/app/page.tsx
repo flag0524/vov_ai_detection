@@ -42,6 +42,7 @@ const BG_PRESETS = [
   ["mediterranean", "지중해풍 미니멀"],
   ["resort_poolside", "리조트 풀사이드"],
   ["stone_courtyard", "화이트 스톤 코트야드"],
+  ["concrete_architecture", "선드렌치드 콘크리트"],
 ] as const;
 
 // SCREEN_DESIGN §2.5 #5 — 자연스러운 동작 연출 (백엔드 agent4 CAMERA_MOTION_PROMPTS 키와 일치)

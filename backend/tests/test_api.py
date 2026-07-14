@@ -154,13 +154,37 @@ def test_summer_theme_presets_exist():
 
 
 def test_prompt_locks_korean_proportions_and_reference_garment(client):
-    """프롬프트가 (1) 참조 이미지의 그 옷을 명시하고 (2) 한국인 표준 체형을 지시한다"""
+    """프롬프트가 참조 상품·체형·보행·실사 품질을 모두 지시한다 (사용자 지정 템플릿)"""
     product_id = _upload_product(client)
     result = client.post("/pipeline/run", json={"product_id": product_id}).json()
     p = result["prompt"]
-    assert "reference image" in p          # 상품 보존 (flux-2 image_urls, ADR-015)
-    assert "Korean adult female proportions" in p  # 비율 왜곡 방지
+    # 상품 보존 (flux-2 image_urls, ADR-015)
+    assert "reference image" in p
+    # 비율 왜곡 방지
+    assert "Korean adult female body proportions" in p
     assert "7 heads tall" in p
+    assert "not excessively tall" in p
+    # 자연스러운 보행 (발 미끄러짐 방지)
+    assert "no sliding effect" in p
+    # 'AI스러움' 제거 — 실사 화보 품질
+    assert "35mm lens" in p
+    assert "NOT CGI looking" in p
+
+
+def test_negative_prompt_blocks_ai_artifacts_and_distortion():
+    """네거티브가 AI 아티팩트·만화체·다리 늘어남·보행 왜곡을 차단한다"""
+    from agents.agent2_prompt_engineer import generate_photoshoot_prompt
+    neg = generate_photoshoot_prompt({}, {})["negative_prompt"]
+    for term in ("AI artifacts", "cartoon", "anime", "unnaturally long legs",
+                 "stretched body", "unnatural walking", "sliding feet", "messy background"):
+        assert term in neg
+
+
+def test_brand_name_defaults_to_jblanc():
+    """브랜드명은 상수로 분리 — ADR-014 기준 기본값 JBLANC (VOV는 벤치마크, 주입 금지)"""
+    from agents.agent2_prompt_engineer import BRAND_NAME, generate_photoshoot_prompt
+    assert BRAND_NAME == "JBLANC"
+    assert "JBLANC" in generate_photoshoot_prompt({}, {})["prompt"]
 
 
 def test_pipeline_background_preset_injected_into_prompt(client):
