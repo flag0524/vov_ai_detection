@@ -13,7 +13,7 @@
 | ID | 화면명 | 상태 | 경로(안) | 목적 |
 |---|---|---|---|---|
 | SCR-001 | 생성 메인 (업로드→생성→결과) | ✅ 구현 | `/` | 상품 업로드 후 화보·릴스·카피 자동 생성 및 확인 |
-| SCR-002 | 검수·재생성 | 🔷 계획 (B-4) | `/review/{job_id}` | QA 점수 확인, 미달 건 재생성/승인 |
+| SCR-002 | 검수·재생성 | ✅ 구현 | `/` 검수 탭 | 원본↔생성물 비교, QA 점수, 승인/재생성/폐기 |
 | SCR-003 | AI 모델 관리 | 🔷 계획 (B-5 연계) | `/models` | Soul ID 모델 목록·속성 확인, 신규 모델 생성 |
 | SCR-004 | 콘텐츠 라이브러리 | 🔷 계획 (B-3/B-4) | `/contents` | 생성 이력 조회, 인스타 포맷별 다운로드, 발행 준비 |
 
@@ -168,7 +168,26 @@
 
 ---
 
-## 3. SCR-002 검수·재생성 🔷 계획 (트랙 B-4)
+## 3. SCR-002 검수·재생성 ✅ 구현 (2026-07-09, ADR-013)
+
+**구현 요약** — 별도 라우트가 아니라 단일 페이지의 **검수 탭**으로 구현했다 (생성/검수/라이브러리 3탭).
+
+| 기능 | API | 비고 |
+|---|---|---|
+| 검수 목록 (상태 탭: 전체/검수대기/승인됨/폐기) | `GET /review/jobs?status=` | 화보 job + 원본 URL + SSIM + qa_status |
+| 원본↔생성물 비교 뷰 | `original_url` 사용 | **`/storage` StaticFiles 마운트**로 원본 서빙 (ADR-013 ⑤). S3 전환 시 마운트만 교체 |
+| 승인 | `PATCH /review/jobs/{job_id}` `{action:"approve"}` | job.qa_status + **Content.status 동시 전이** — 승인된 건만 배포 준비 진입 |
+| 폐기 | `PATCH ... {action:"discard"}` | job.status=failed, Content.status=discarded |
+| 재생성 (프롬프트 수정) | `POST /review/jobs/{job_id}/regenerate` `{prompt?}` | **크레딧 소모 확인 후** 실행. 직전 결과를 `result_refs.history`에 보존해 회차별 비교 |
+| 재생성 이력 | `history[]` | 회차·SSIM 타임라인 |
+
+**주의(실측)**: 구 스키마 job은 `params.background`가 **문자열**로 저장돼 있다. 딕셔너리로 가정하면 검수 목록이 500으로 죽는다 — `_scene_of()`로 둘 다 받는다.
+
+재생성에 필요한 `model_key`·`negative_prompt`는 화보 생성 시 `job.params`에 함께 저장한다.
+
+---
+
+### (원안) SCR-002 설계
 
 ### 3.1 레이아웃 (와이어프레임)
 

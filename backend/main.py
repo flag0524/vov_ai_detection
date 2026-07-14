@@ -1,6 +1,9 @@
 # JBLANC FastAPI 애플리케이션 진입점
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.api.health import router as health_router
 from app.api.product import router as product_router
 from app.api.jobs import router as jobs_router
@@ -8,6 +11,7 @@ from app.api.ai import router as ai_router
 from app.api.sns import router as sns_router
 from app.api.pipeline import router as pipeline_router
 from app.api.contents import router as contents_router
+from app.api.review import router as review_router
 from app.models.base import engine, Base
 
 Base.metadata.create_all(bind=engine)
@@ -28,3 +32,10 @@ app.include_router(ai_router)
 app.include_router(sns_router)
 app.include_router(pipeline_router)
 app.include_router(contents_router)
+app.include_router(review_router)
+
+# 원본 상품 이미지를 검수 화면에서 보려면 서빙이 필요하다 (ADR-013 ⑤).
+# S3 전환 시 이 마운트만 교체하면 된다.
+_STORAGE_DIR = os.getenv("STORAGE_LOCAL_DIR", "../storage")
+os.makedirs(os.path.join(_STORAGE_DIR, "uploads"), exist_ok=True)
+app.mount("/storage", StaticFiles(directory=_STORAGE_DIR), name="storage")

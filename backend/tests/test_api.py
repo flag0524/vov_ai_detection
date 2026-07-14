@@ -488,6 +488,73 @@ def test_contents_filters_by_category(client):
     assert len(items) == 1 and items[0]["category"] == "상의"
 
 
+# --- SCR-002 검수·재생성 (ADR-013) ---
+
+def _generated_job(client):
+    """화보를 하나 생성하고 검수 job을 돌려주는 헬퍼."""
+    product_id = _upload_product(client)
+    client.post("/pipeline/run", json={"product_id": product_id})
+    items = client.get("/review/jobs").json()["items"]
+    assert items
+    return items[0]
+
+
+def test_review_list_shows_original_and_generated(client):
+    """검수 목록에 원본 URL·생성 화보·SSIM·상태가 함께 나온다 (비교 뷰용)"""
+    it = _generated_job(client)
+    assert it["original_url"].startswith("/storage/uploads/")
+    assert it["image_url"]
+    assert it["ssim"] is not None
+    assert it["qa_status"] in ("approved", "manual_review")
+    assert it["attempts"] == 1
+
+
+def test_review_list_survives_legacy_string_background(client):
+    """회귀: 구 스키마 job은 params.background가 문자열이다.
+    딕셔너리로 가정하면 검수 목록이 500으로 죽는다 (실 DB에서 발생)."""
+    from app.api.review import _scene_of
+    assert _scene_of({"background": "Seoul luxury boutique"}) == "Seoul luxury boutique"
+    assert _scene_of({"background": {"scene": "city street"}}) == "city street"
+    assert _scene_of({}) is None
+    assert _scene_of(None) is None
+
+
+def test_review_approve_transitions_job_and_content(client):
+    """승인 시 job.qa_status와 Content.status가 함께 approved로 전이"""
+    it = _generated_job(client)
+    r = client.patch(f"/review/jobs/{it['job_id']}", json={"action": "approve"}).json()
+    assert r["qa_status"] == "approved"
+    assert r["content_status"] == "approved"
+    assert client.get("/review/jobs", params={"status": "approved"}).json()["items"]
+
+
+def test_review_discard_marks_job_failed(client):
+    """폐기 시 job은 failed, Content는 discarded — 배포 대상에서 제외"""
+    it = _generated_job(client)
+    r = client.patch(f"/review/jobs/{it['job_id']}", json={"action": "discard"}).json()
+    assert r["qa_status"] == "discarded"
+    assert r["content_status"] == "discarded"
+
+
+def test_review_rejects_unknown_action(client):
+    it = _generated_job(client)
+    assert client.patch(f"/review/jobs/{it['job_id']}", json={"action": "nope"}).status_code == 400
+
+
+def test_review_regenerate_keeps_history_and_uses_edited_prompt(client):
+    """재생성: 프롬프트 수정 반영 + 직전 결과를 이력으로 보존 + 회차 증가"""
+    it = _generated_job(client)
+    before = it["image_url"]
+    r = client.post(f"/review/jobs/{it['job_id']}/regenerate",
+                    json={"prompt": "수정된 프롬프트"}).json()
+    assert r["attempts"] == 2
+    assert r["image_url"] != before
+
+    after = client.get("/review/jobs").json()["items"][0]
+    assert after["prompt"] == "수정된 프롬프트"      # 수정된 프롬프트가 저장됨
+    assert after["history"][0]["image_url"] == before  # 직전 결과가 이력에 남음
+
+
 # --- Phase 3: 영상 생성 파라미터 검증 ---
 
 def test_video_duration_range_enforced():

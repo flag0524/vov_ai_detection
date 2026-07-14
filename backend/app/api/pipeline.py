@@ -138,7 +138,13 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     img_job = GenerationJob(
         job_id=job_key, type="image", product_id=product.product_id,
         model_id=ai_model.model_id, status="done",
-        params={"prompt": prompt_result["prompt"], "background": {"preset": bg.preset, "custom": bg.custom, "scene": scene}},
+        params={
+            "prompt": prompt_result["prompt"],
+            # 재생성(SCR-002) 때 동일 조건으로 다시 만들려면 이것들이 필요하다
+            "negative_prompt": prompt_result["negative_prompt"],
+            "model_key": selected_model["key"],
+            "background": {"preset": bg.preset, "custom": bg.custom, "scene": scene},
+        },
         result_refs={
             "image_url": image_result["image_url"],
             "local_path": generated_path,

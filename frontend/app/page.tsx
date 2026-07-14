@@ -79,6 +79,29 @@ const ATTR_FIELDS = [
 
 type PaletteColor = { hex: string; ratio: number };
 
+// SCR-002 검수 대상 (GET /review/jobs)
+type ReviewJob = {
+  job_id: string;
+  product_id: string;
+  product_name: string | null;
+  category: string | null;
+  original_url: string | null;
+  image_url: string | null;
+  ssim: number | null;
+  qa_status: string | null;
+  attempts: number;
+  history: { image_url: string; ssim: number | null; at: string }[];
+  prompt: string | null;
+  scene: string | null;
+};
+
+const QA_TABS = [
+  ["", "전체"],
+  ["manual_review", "검수대기"],
+  ["approved", "승인됨"],
+  ["discarded", "폐기"],
+] as const;
+
 // 전속 모델 (GET /ai/models) — 다각도 참조로 얼굴이 고정된다
 type FashionModel = {
   key: string;
@@ -176,8 +199,70 @@ export default function Home() {
       })
       .catch(() => setModels([]));
   }, []);
-  // 뷰 전환 (생성 / 라이브러리) + 라이브러리 상태
-  const [view, setView] = useState<"create" | "library">("create");
+  // 뷰 전환 (생성 / 검수 / 라이브러리) + 라이브러리 상태
+  const [view, setView] = useState<"create" | "review" | "library">("create");
+  // SCR-002 검수
+  const [reviewJobs, setReviewJobs] = useState<ReviewJob[]>([]);
+  const [qaTab, setQaTab] = useState<string>("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [picked, setPicked] = useState<ReviewJob | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [busyAction, setBusyAction] = useState(false);
+
+  async function loadReview(tab: string) {
+    setReviewLoading(true);
+    try {
+      const url = tab
+        ? `${API_BASE}/review/jobs?status=${encodeURIComponent(tab)}`
+        : `${API_BASE}/review/jobs`;
+      const res = await fetch(url);
+      setReviewJobs(res.ok ? ((await res.json()).items ?? []) : []);
+    } catch {
+      setReviewJobs([]);
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (view === "review") loadReview(qaTab);
+  }, [view, qaTab]);
+
+  async function decide(job: ReviewJob, action: "approve" | "discard") {
+    setBusyAction(true);
+    try {
+      await fetch(`${API_BASE}/review/jobs/${job.job_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      setPicked(null);
+      await loadReview(qaTab);
+    } finally {
+      setBusyAction(false);
+    }
+  }
+
+  async function regenerate(job: ReviewJob) {
+    if (!confirm("재생성은 크레딧을 소모합니다. 진행할까요?")) return;
+    setBusyAction(true);
+    try {
+      const res = await fetch(`${API_BASE}/review/jobs/${job.job_id}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: editPrompt.trim() || null }),
+      });
+      if (res.ok) {
+        await loadReview(qaTab);
+        const fresh = await fetch(`${API_BASE}/review/jobs`).then((r) => r.json());
+        setPicked(
+          (fresh.items ?? []).find((j: ReviewJob) => j.job_id === job.job_id) ?? null,
+        );
+      }
+    } finally {
+      setBusyAction(false);
+    }
+  }
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libCategory, setLibCategory] = useState<string>("");
   const [libLoading, setLibLoading] = useState(false);
@@ -300,7 +385,13 @@ export default function Home() {
                 </span>
               )}
             <div className="flex rounded-full border border-[#2a2a31] bg-[#141417] p-0.5 text-xs">
-              {(["create", "library"] as const).map((v) => (
+              {(
+                [
+                  ["create", "생성"],
+                  ["review", "검수"],
+                  ["library", "라이브러리"],
+                ] as const
+              ).map(([v, label]) => (
                 <button
                   key={v}
                   type="button"
@@ -311,7 +402,7 @@ export default function Home() {
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  {v === "create" ? "생성" : "라이브러리"}
+                  {label}
                 </button>
               ))}
             </div>
@@ -746,6 +837,204 @@ export default function Home() {
           </section>
         )}
         </>
+        )}
+
+        {/* SCR-002 검수 — 원본↔생성물 비교, 승인/재생성/폐기 */}
+        {view === "review" && (
+          <section className="flex flex-col gap-4">
+            <header>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-50">검수</h1>
+              <p className="mt-1 text-sm text-zinc-400">
+                원본과 생성 화보를 비교해 승인·재생성·폐기합니다. 승인된 건만 배포 준비로 넘어갑니다.
+              </p>
+            </header>
+
+            <div className="flex flex-wrap gap-1.5">
+              {QA_TABS.map(([key, label]) => (
+                <button
+                  key={key || "all"}
+                  type="button"
+                  onClick={() => {
+                    setQaTab(key);
+                    setPicked(null);
+                  }}
+                  className={`rounded-full border px-3.5 py-1 text-xs transition-colors ${
+                    qaTab === key ? CHIP_ON : CHIP_OFF
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {reviewLoading ? (
+              <p className="py-10 text-center text-sm text-zinc-500">불러오는 중...</p>
+            ) : reviewJobs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#2a2a31] py-14 text-center text-sm text-zinc-400">
+                검수할 화보가 없습니다.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {reviewJobs.map((j) => (
+                  <button
+                    key={j.job_id}
+                    type="button"
+                    onClick={() => {
+                      setPicked(j);
+                      setEditPrompt(j.prompt ?? "");
+                    }}
+                    className={`flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${
+                      picked?.job_id === j.job_id
+                        ? "border-violet-500"
+                        : "border-[#2a2a31] hover:border-zinc-600"
+                    }`}
+                  >
+                    <div className="aspect-[3/4] overflow-hidden bg-[#17171b]">
+                      {j.image_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={j.image_url}
+                          alt="화보"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1 p-2">
+                      <span className="truncate text-[11px] text-zinc-200">
+                        {j.product_name || "이름 없음"}
+                      </span>
+                      <span
+                        className={`w-fit rounded px-1.5 py-0.5 text-[10px] ${
+                          j.qa_status === "approved"
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : j.qa_status === "discarded"
+                              ? "bg-red-500/15 text-red-300"
+                              : "bg-amber-500/15 text-amber-300"
+                        }`}
+                      >
+                        {j.qa_status === "approved"
+                          ? "승인됨"
+                          : j.qa_status === "discarded"
+                            ? "폐기"
+                            : "검수대기"}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 상세 — 비교 뷰 + QA + 판정 */}
+            {picked && (
+              <div className="flex flex-col gap-4 rounded-2xl border border-[#2a2a31] bg-[#141417] p-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-zinc-100">
+                    {picked.product_name || "화보 검수"}
+                  </h2>
+                  <span className="text-xs text-zinc-500">
+                    {picked.attempts}차 생성 · SSIM {picked.ssim ?? "—"}
+                  </span>
+                </div>
+
+                {/* 원본 ↔ 생성물 비교 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <figure className="flex flex-col gap-1">
+                    <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-[#2a2a31] bg-[#17171b]">
+                      {picked.original_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`${API_BASE}${picked.original_url}`}
+                          alt="원본 상품"
+                          className="h-full w-full object-contain"
+                        />
+                      )}
+                    </div>
+                    <figcaption className="text-center text-[11px] text-zinc-500">
+                      원본 상품
+                    </figcaption>
+                  </figure>
+                  <figure className="flex flex-col gap-1">
+                    <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-[#2a2a31] bg-[#17171b]">
+                      {picked.image_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={picked.image_url}
+                          alt="생성 화보"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <figcaption className="text-center text-[11px] text-zinc-500">
+                      생성 화보
+                    </figcaption>
+                  </figure>
+                </div>
+
+                {/* 재생성 이력 */}
+                {picked.history.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-zinc-400">재생성 이력</p>
+                    <div className="flex gap-2 overflow-x-auto">
+                      {picked.history.map((h, i) => (
+                        <div key={h.image_url} className="shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={h.image_url}
+                            alt={`${i + 1}차`}
+                            className="h-24 w-18 rounded border border-[#2a2a31] object-cover"
+                          />
+                          <p className="mt-0.5 text-center text-[10px] text-zinc-500">
+                            {i + 1}차 · {h.ssim ?? "—"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 프롬프트 수정 */}
+                <div>
+                  <p className="mb-1 text-xs font-medium text-zinc-400">
+                    프롬프트 (재생성 시 반영)
+                  </p>
+                  <textarea
+                    value={editPrompt}
+                    onChange={(e) => setEditPrompt(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-[#33333c] bg-[#1b1b1f] px-3 py-2 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* 판정 */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={busyAction}
+                    onClick={() => decide(picked, "approve")}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                  >
+                    승인
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyAction}
+                    onClick={() => regenerate(picked)}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
+                  >
+                    {busyAction ? "처리 중..." : "재생성 (크레딧 소모)"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyAction}
+                    onClick={() => decide(picked, "discard")}
+                    className="rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                  >
+                    폐기
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
         )}
 
         {view === "library" && (
