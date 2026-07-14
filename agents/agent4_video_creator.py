@@ -25,10 +25,13 @@ NATURALNESS_MOTION_PROMPT = (
 )
 
 # PRD FR-7 / TRD §6 — 영상 Negative Prompt
+# 보행 프레임 왜곡·비율 왜곡 방지 (물리 엔진 레이어는 불가 — 네거티브 + 검수로 관리)
 NATURALNESS_MOTION_NEGATIVE = (
     "robotic movement, jerky motion, unnatural gait, sliding feet, "
     "frame jitter, face morphing, twitching face, expression flickering, "
-    "limb distortion, teleporting body parts, frozen expression"
+    "limb distortion, teleporting body parts, frozen expression, "
+    "exaggerated body proportions, unnaturally elongated legs, stretched torso, "
+    "warping clothing, garment texture flickering, changing outfit details"
 )
 
 

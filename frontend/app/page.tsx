@@ -36,8 +36,12 @@ const BG_PRESETS = [
   ["city_street", "시티 스트리트"],
   ["cafe", "카페 · 인테리어"],
   ["nature", "자연 · 아웃도어"],
-  ["seasonal", "계절 무드"],
   ["minimal_color", "미니멀 컬러"],
+  // 여름 · 미니멀 · 모던 테마 (VOV 벤치마크 톤)
+  ["luxury_terrace", "도심 럭셔리 테라스"],
+  ["mediterranean", "지중해풍 미니멀"],
+  ["resort_poolside", "리조트 풀사이드"],
+  ["stone_courtyard", "화이트 스톤 코트야드"],
 ] as const;
 
 // SCREEN_DESIGN §2.5 #5 — 자연스러운 동작 연출 (백엔드 agent4 CAMERA_MOTION_PROMPTS 키와 일치)

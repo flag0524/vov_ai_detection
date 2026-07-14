@@ -145,6 +145,24 @@ def test_resolve_background_precedence():
     assert resolve_background("no_such_preset", "") == PRESET_SCENES["studio_white"]
 
 
+def test_summer_theme_presets_exist():
+    """여름·미니멀·모던 테마 프리셋 (도심 테라스/지중해/풀사이드/스톤 코트야드)"""
+    from agents.agent2_prompt_engineer import PRESET_SCENES
+    for key in ("luxury_terrace", "mediterranean", "resort_poolside", "stone_courtyard"):
+        assert key in PRESET_SCENES
+        assert "summer" in PRESET_SCENES[key]
+
+
+def test_prompt_locks_korean_proportions_and_reference_garment(client):
+    """프롬프트가 (1) 참조 이미지의 그 옷을 명시하고 (2) 한국인 표준 체형을 지시한다"""
+    product_id = _upload_product(client)
+    result = client.post("/pipeline/run", json={"product_id": product_id}).json()
+    p = result["prompt"]
+    assert "reference image" in p          # 상품 보존 (flux-2 image_urls, ADR-015)
+    assert "Korean adult female proportions" in p  # 비율 왜곡 방지
+    assert "7 heads tall" in p
+
+
 def test_pipeline_background_preset_injected_into_prompt(client):
     """프리셋 씨가 화보 프롬프트 Scene 절에 주입된다"""
     from agents.agent2_prompt_engineer import PRESET_SCENES

@@ -8,11 +8,21 @@ NATURALNESS_PROMPT = (
     "distribution, relaxed hands, accurate fingers."
 )
 
-# PRD FR-7 / TRD §5 — Naturalness Negative Prompt (이미지)
+# 체형 비율 지시어 — 인위적으로 길어 보이는 8등신 과장을 막고 한국인 표준 체형으로 고정
+# (물리 엔진 보정 레이어는 생성 API 위에 만들 수 없으므로 프롬프트/네거티브 + 검수로 관리)
+PROPORTION_PROMPT = (
+    "Body: realistic Korean adult female proportions, natural head-to-body ratio "
+    "(about 7 heads tall), natural leg length, grounded balanced stance, "
+    "true-to-life shoulder width."
+)
+
+# PRD FR-7 / TRD §5 — Naturalness Negative Prompt (이미지) + 비율 왜곡 방지
 NATURALNESS_NEGATIVE = (
     "stiff pose, unnatural facial expression, frozen face, awkward smile, "
     "dead eyes, asymmetric distorted face, broken joints, distorted fingers, "
-    "unnatural neck angle, uncanny valley"
+    "unnatural neck angle, uncanny valley, "
+    "exaggerated body proportions, unnaturally elongated legs, stretched torso, "
+    "distorted head-to-body ratio, doll-like proportions, floating feet"
 )
 
 # TRD §5 — 상품 원본 보존 + 품질 공통 지시어
@@ -24,13 +34,29 @@ _BASE_NEGATIVE = (
 
 # SCREEN_DESIGN §2.6 — 배경/씨 프리셋 (모델·상품 고정, 배경만 자유 변수)
 # 프리셋 키 → 화보 프롬프트에 주입할 씨 문구. 신규 프리셋은 여기만 추가한다.
+# summer_* 계열은 '미니멀한 선 · 모던 스타일' 여름 테마 (VOV 벤치마크 톤)
 PRESET_SCENES = {
     "studio_white": "clean white seamless studio backdrop, professional softbox lighting",
     "city_street": "modern urban city street, contemporary architecture, natural daylight",
     "cafe": "cozy cafe interior, warm ambient light, softly blurred background",
     "nature": "outdoor natural setting with greenery, soft natural daylight, golden hour",
-    "seasonal": "atmospheric seasonal mood backdrop, cinematic seasonal ambience",
     "minimal_color": "minimal solid color background with soft gradient, studio lighting",
+    "luxury_terrace": (
+        "modern luxury rooftop terrace in the city, minimal clean lines, summer daylight, "
+        "potted greenery, warm sunlight and soft shadows"
+    ),
+    "mediterranean": (
+        "Mediterranean minimal white architecture, whitewashed walls and clean geometric lines, "
+        "bright summer sunlight, deep blue sky"
+    ),
+    "resort_poolside": (
+        "minimal modern resort poolside, calm water reflections, clean architectural lines, "
+        "bright summer daylight"
+    ),
+    "stone_courtyard": (
+        "white stone courtyard with minimal modern architecture, crisp summer shadows, "
+        "quiet contemporary atmosphere"
+    ),
 }
 _DEFAULT_PRESET = "studio_white"
 
@@ -63,15 +89,19 @@ def generate_photoshoot_prompt(product_meta: dict, model_attrs: dict, background
     ]
     model_desc = ", ".join(model_parts) if model_parts else "elegant Korean fashion model"
 
+    # flux-2에 상품 이미지를 image_urls 참조로 넣으므로(ADR-015), 프롬프트도 "참조 이미지의 그 옷"을
+    # 명시해 상품 보존을 강제한다 (실증에서 이 문구로 원본 재현 성공).
     prompt = (
         f"Premium fashion campaign photo for JBLANC brand. "
-        f"A Korean female fashion model ({model_desc}) wearing {product_desc}"
-        f"{f' ({product_name})' if product_name else ''}, "
-        f"preserving the original product design, color, pattern and logo exactly. "
+        f"A Korean female fashion model ({model_desc}) wearing the exact garment shown in the "
+        f"reference image"
+        f"{f' ({product_name})' if product_name else ''} — {product_desc}, "
+        f"preserving its design, color, pattern, fabric texture and logo exactly. "
         f"Scene: {background}. "
-        f"Lighting: soft natural studio lighting. "
+        f"Lighting: soft natural light. "
         f"Camera: 85mm fashion photography, high resolution, realistic texture. "
-        f"Style: luxury Korean fashion magazine editorial (Vogue style). "
+        f"Style: luxury Korean fashion magazine editorial. "
+        f"{PROPORTION_PROMPT} "
         f"{NATURALNESS_PROMPT}"
     )
 
