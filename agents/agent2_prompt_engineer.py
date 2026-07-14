@@ -22,8 +22,8 @@ ACTION_PROMPT = (
 # 체형 비율(Appearance) — 인위적으로 길어 보이는 8등신 과장을 막고 실제 체형으로 고정
 # (물리 엔진 보정 레이어는 생성 API 위에 만들 수 없으므로 프롬프트/네거티브 + 검수로 관리)
 PROPORTION_PROMPT = (
-    "Appearance: realistic Korean adult female body proportions, natural head-to-body ratio "
-    "(about 7 heads tall), average height for a fashion model (not excessively tall), "
+    "Appearance: realistic Korean adult female body proportions, height 169-170cm, "
+    "natural head-to-body ratio (about 7 to 7.5 heads tall), NOT a 9-head figure, "
     "natural leg length, true-to-life shoulder width, high-end editorial look."
 )
 

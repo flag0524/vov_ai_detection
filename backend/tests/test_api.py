@@ -160,10 +160,11 @@ def test_prompt_locks_korean_proportions_and_reference_garment(client):
     p = result["prompt"]
     # 상품 보존 (flux-2 image_urls, ADR-015)
     assert "reference image" in p
-    # 비율 왜곡 방지
+    # 비율 왜곡 방지 — 전속 모델 키 169~170cm, 7~7.5등신 (9등신 과장 금지)
     assert "Korean adult female body proportions" in p
-    assert "7 heads tall" in p
-    assert "not excessively tall" in p
+    assert "height 169-170cm" in p
+    assert "7 to 7.5 heads tall" in p
+    assert "NOT a 9-head figure" in p
     # 자연스러운 보행 (발 미끄러짐 방지)
     assert "no sliding effect" in p
     # 'AI스러움' 제거 — 실사 화보 품질

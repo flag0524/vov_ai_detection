@@ -139,10 +139,12 @@
 
 ### ADR-015 후속: 전속 모델 canonical 참조 등록 완료 (ADR-014 ①② 이행) ✅
 
-- **일자**: 2026-07-09 (후보 4장 생성 → 사용자가 **A** 선정)
-- **모델**: 후보 A — 긴 생머리, 차분한 우아함. 원본 `storage/model/canonical_model.jpg` (중립 흰 티셔츠 + 무지 스튜디오 배경 = 의상 혼입 방지용)
+- **일자**: 2026-07-09 (1차 후보 4장 → A 선정 → **2차 재선정**: 2026 HOT SUMMER CAMPAIGN 사양(169~170cm)으로 3인 재생성 후 **③ 우아·모던(170cm)** 최종 확정)
+- **모델**: ③ 우아·모던 — 넘긴 머리, 또렷한 눈매·주근깨, 기품 있는 무드, 170cm. 원본 `storage/model/canonical_model.jpg`
+- **참조 이미지 규칙**: 반드시 **중립 흰 티셔츠 + 무지 스튜디오 배경**으로 만든다. 캠페인 의상을 입힌 포트레이트를 참조로 쓰면 **그 의상이 이후 모든 화보에 혼입된다**.
 - **등록 URL** (`.env`의 `JBLANC_MODEL_REFERENCE_URL`, .env는 gitignore이므로 여기에 보존):
-  `https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/d93a5211-dd77-4e67-a677-ba3ab177e674.jpeg`
+  `https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/0925c503-8ad5-46dd-a910-503321d4b159.jpeg`
+- **체형 사양**: `PROPORTION_PROMPT` = 169~170cm, 7~7.5등신, NOT 9-head figure (AI 특유의 과한 비율 억제)
 - **동작**: agent3가 `image_urls = [상품 참조, 모델 참조]` 2장을 flux-2에 넣고, `apply_identity_lock()`이 "얼굴·헤어·정체성은 모델 참조에서만, 의상은 상품 참조에서" 절을 프롬프트에 덧붙인다. **이 절이 없으면 모델 참조의 흰 티셔츠가 결과물에 섞인다(실측).**
 - **검증**: 실제 코드 경로로 생성 → `storage/results/canonical_test.jpg`. 얼굴=후보 A 동일, 의상=원본 레이스 블라우스+데님 스커트 보존, 모델 참조의 티셔츠·스튜디오 배경 미혼입, 배경=`concrete_architecture` 프리셋. **상품 보존(#3) + 모델 일관성(#4) 동시 달성.**
 - **모델 교체 시**: 새 포트레이트를 업로드해 `JBLANC_MODEL_REFERENCE_URL`만 교체하면 된다 (코드 변경 불필요).
