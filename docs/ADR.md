@@ -156,6 +156,15 @@
 - **A/B 실측**: 참조 2장(상품+정면) vs 4장(상품+정면+45도+측면)을 같은 상품·배경으로 비교 → **다각도 쪽이 얼굴 일치도가 더 안정적이고, 상품 참조 희석은 없었다**(캡소매·레이스 패널·헴 모두 보존). 다각도 채택.
 - **다각도 컷 제작법**: canonical 정면을 `image_urls` 참조로 넣고 "동일 인물, 45도/측면" 프롬프트로 생성 → `storage/model/canonical_45.jpg`, `canonical_profile.jpg`. 반드시 중립 흰 티셔츠·무지 배경 유지.
 
+#### 전속 모델 3인 레지스트리 + 선택 피팅 (2026-07-09) ✅
+
+- **모델 3인**: `elegant` 우아·모던(170cm) · `chic` 세련·시크(169cm) · `natural` 깨끗·내추럴(170cm). 각 모델마다 **다각도 참조 3장**(정면·45도·측면) 보유.
+- **저장소**: `storage/model/registry.json` (key·이름·키·헤어·무드·reference_urls). 로더 `agents/model_registry.py`. **DB 컬럼을 추가하지 않아 기존 dev DB 무손상** — 참조 URL은 Higgsfield CDN이라 프론트 썸네일로 바로 쓴다.
+- **환경변수 폐기**: 단일 모델용 `JBLANC_MODEL_REFERENCE_URL`은 레지스트리로 대체됐다.
+- **API**: `GET /ai/models` → 모델 목록+기본값(SCR-003). `POST /pipeline/run`에 `model_key` 추가 → 해당 모델의 다각도 참조 + 헤어·무드 속성으로 프롬프트·생성. 응답에 `model_key`/`model_name`.
+- **중요**: 프롬프트의 모델 묘사(헤어·무드)를 **참조 얼굴과 일치**시켜야 얼굴 고정이 안정적이다. 그래서 `model_attrs`도 레지스트리에서 가져온다 (DB AIModel 속성 대신).
+- **검증**: 같은 상품으로 3인 각각 피팅 → 얼굴은 모델별로 다르고 상품(캡소매 레이스 블라우스+데님 스커트)은 전부 보존 (`storage/results/fit_chic.jpg`, `fit_natural.jpg`).
+
 ---
 
 ## 기록 규칙

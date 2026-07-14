@@ -48,6 +48,8 @@ class PipelineRequest(BaseModel):
     background: BackgroundSpec = None
     # SCREEN_DESIGN §2.5 #5 — 자연스러운 동작 연출 (릴스 카메라 워킹)
     camera_motion: str = "dolly_in"
+    # 전속 모델 선택 (elegant | chic | natural) — 미지정 시 기본 모델
+    model_key: str = None
 
 
 @router.post("/run")
@@ -101,13 +103,18 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(ai_model)
 
-    model_attrs = {"hair_style": ai_model.hair_style, "age": ai_model.age, "mood": ai_model.mood, "fashion_style": ai_model.fashion_style}
+    # 전속 모델 속성은 레지스트리에서 가져온다 — 프롬프트 묘사(헤어·무드)를 참조 얼굴과 일치시켜야
+    # 얼굴 고정이 안정적이다. AIModel 레코드는 job 기록용으로 유지.
+    from agents import model_registry
+    selected_model = model_registry.get_model(req.model_key)
+    model_attrs = model_registry.model_attrs(req.model_key)
 
     # Step 3: 프롬프트 + 이미지 생성 (1회)
     prompt_result = generate_photoshoot_prompt(product_meta, model_attrs, scene)
     image_result = generate_image(
         prompt_result["prompt"], ai_model.soul_reference_id, image_path, ai_model.model_id,
         negative_prompt=prompt_result["negative_prompt"],
+        model_key=selected_model["key"],
     )
 
     # Step 4: 품질 검증 — SSIM은 정보성 점수 (ADR-011, 2026-07-05 사용자 결정)
@@ -164,6 +171,8 @@ def run_full_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
         "processing_time_sec": processing_time_sec,
         "video_url": video_result["video_url"],
         "camera_motion": req.camera_motion,
+        "model_key": selected_model["key"],
+        "model_name": selected_model["name"],
         "sns": sns_result,
         "stubs": {
             "image": image_result.get("stub", False),

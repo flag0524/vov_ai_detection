@@ -20,6 +20,8 @@ type PipelineResult = {
   };
   video_url: string;
   camera_motion?: string;
+  model_key?: string;
+  model_name?: string;
   sns: {
     caption: string;
     hashtags: string[];
@@ -77,6 +79,15 @@ const ATTR_FIELDS = [
 
 type PaletteColor = { hex: string; ratio: number };
 
+// 전속 모델 (GET /ai/models) — 다각도 참조로 얼굴이 고정된다
+type FashionModel = {
+  key: string;
+  name: string;
+  height_cm: number;
+  mood: string;
+  thumbnail_url: string;
+};
+
 // SCREEN_DESIGN §5 — 콘텐츠 라이브러리 항목 (GET /contents)
 type LibraryItem = {
   product_id: string;
@@ -128,6 +139,19 @@ export default function Home() {
   const [camMotion, setCamMotion] = useState<string>("dolly_in");
   // 모델 고정: 첫 생성의 모델을 세션 내 재사용해 동일 Soul ID 유지 (#4)
   const [modelId, setModelId] = useState<string | null>(null);
+  // 전속 모델 선택 — 선택한 모델의 다각도 참조로 피팅한다
+  const [models, setModels] = useState<FashionModel[]>([]);
+  const [modelKey, setModelKey] = useState<string>("");
+
+  useEffect(() => {
+    fetch(`${API_BASE}/ai/models`)
+      .then((r) => (r.ok ? r.json() : { models: [], default: "" }))
+      .then((d) => {
+        setModels(d.models ?? []);
+        setModelKey((prev) => prev || d.default || "");
+      })
+      .catch(() => setModels([]));
+  }, []);
   // 뷰 전환 (생성 / 라이브러리) + 라이브러리 상태
   const [view, setView] = useState<"create" | "library">("create");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
@@ -211,6 +235,7 @@ export default function Home() {
           product_id,
           background: { preset: bgPreset, custom: bgCustom.trim() },
           camera_motion: camMotion,
+          ...(modelKey ? { model_key: modelKey } : {}),
           ...(modelId ? { model_id: modelId } : {}),
         }),
       });
@@ -439,6 +464,51 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* 전속 모델 선택 — 선택한 모델로 피팅 */}
+              {models.length > 0 && (
+                <div className={SUBCARD}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-zinc-300">전속 모델</span>
+                    <span className="text-[11px] text-zinc-500">
+                      선택한 모델로 피팅 · 얼굴 고정
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {models.map((m) => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => setModelKey(m.key)}
+                        className={`flex flex-col overflow-hidden rounded-lg border text-left transition-colors ${
+                          modelKey === m.key
+                            ? "border-violet-500 ring-1 ring-violet-500/40"
+                            : "border-[#33333c] hover:border-zinc-600"
+                        }`}
+                      >
+                        <div className="aspect-[3/4] overflow-hidden bg-[#17171b]">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={m.thumbnail_url}
+                            alt={m.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="px-2 py-1.5">
+                          <div
+                            className={`truncate text-[11px] font-medium ${
+                              modelKey === m.key ? "text-violet-200" : "text-zinc-300"
+                            }`}
+                          >
+                            {m.name}
+                          </div>
+                          <div className="text-[10px] text-zinc-500">{m.height_cm}cm</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 배경 / 씬 */}
               <div className={SUBCARD}>
                 <div className="flex items-center justify-between">
@@ -531,11 +601,8 @@ export default function Home() {
         {result && (
           <section className="flex flex-col gap-4 rounded-2xl border border-[#2a2a31] bg-[#141417] p-5">
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full border border-[#33333c] bg-[#1b1b1f] px-3 py-1 text-zinc-300">
-                🔒 모델 {result.model_id.slice(0, 8)}
-                {result.soul_reference_id.startsWith("STUB_")
-                  ? " · Soul STUB"
-                  : " · Soul 학습됨"}
+              <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-violet-200">
+                👤 {result.model_name ?? "전속 모델"}
               </span>
               <span className="rounded-full border border-[#33333c] bg-[#1b1b1f] px-3 py-1 text-zinc-300">
                 🎬{" "}

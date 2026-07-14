@@ -209,7 +209,6 @@ def test_negative_prompt_is_actually_sent_to_higgsfield(monkeypatch):
 
     monkeypatch.setattr(hf, "credentials_available", lambda: True)
     monkeypatch.setattr(hf, "generate", fake_generate)
-    monkeypatch.setattr(a3, "MODEL_REFERENCE_URL", "")
 
     r = a3.generate_image("a prompt", "", "", "m1", negative_prompt="changed sleeve length")
     assert r["stub"] is False
@@ -217,25 +216,51 @@ def test_negative_prompt_is_actually_sent_to_higgsfield(monkeypatch):
     assert sent["payload"]["negative_prompt"] == "changed sleeve length"
 
 
-def test_multi_angle_model_references_are_all_sent(monkeypatch):
-    """전속 모델 다각도 참조(정면·45도·측면)가 image_urls에 모두 실려야 한다.
-    (LoRA 대신 flux-2 다각도 참조로 얼굴 고정 정확도를 올리는 방식 — A/B 실측)"""
+def test_model_registry_has_three_models_with_multi_angle_refs():
+    """전속 모델 3명, 각각 다각도 참조 3장(정면·45도·측면)"""
+    from agents import model_registry
+    models = model_registry.list_models()
+    assert {m["key"] for m in models} == {"elegant", "chic", "natural"}
+    for m in models:
+        assert m["thumbnail_url"].startswith("https://")
+        assert len(model_registry.reference_urls(m["key"])) == 3
+    # 알 수 없는 키는 기본 모델로 폴백
+    assert model_registry.get_model("nope")["key"] == model_registry.default_key()
+
+
+def test_selected_model_references_are_sent(monkeypatch):
+    """선택한 모델의 다각도 참조가 image_urls에 상품 다음으로 모두 실려야 한다.
+    (LoRA 대신 flux-2 다각도 참조로 얼굴 고정 — A/B 실측)"""
     from agents import agent3_fashion_model as a3
-    from agents import higgsfield_client as hf
+    from agents import higgsfield_client as hf, model_registry
 
     sent = {}
     monkeypatch.setattr(hf, "credentials_available", lambda: True)
     monkeypatch.setattr(hf, "generate", lambda m, p, **k: sent.update(payload=p) or
                         {"images": [{"url": "https://x/y.png"}], "request_id": "r"})
     monkeypatch.setattr(hf, "upload_image", lambda path, **k: "https://x/product.jpg")
-    monkeypatch.setattr(a3, "MODEL_REFERENCE_URL", "https://x/front.jpg, https://x/45.jpg, https://x/prof.jpg")
     monkeypatch.setattr(a3.os.path, "exists", lambda p: True)
 
-    a3.generate_image("p", "", "/tmp/product.jpg", "m1")
+    a3.generate_image("p", "", "/tmp/product.jpg", "m1", model_key="chic")
     urls = sent["payload"]["image_urls"]
-    # 상품 참조가 먼저, 그 뒤 모델 다각도 3장
-    assert urls == ["https://x/product.jpg", "https://x/front.jpg",
-                    "https://x/45.jpg", "https://x/prof.jpg"]
+    assert urls[0] == "https://x/product.jpg"                    # 상품이 먼저
+    assert urls[1:] == model_registry.reference_urls("chic")     # 선택 모델 다각도 3장
+
+
+def test_models_endpoint_lists_three(client):
+    """GET /ai/models — 전속 모델 3명 + 기본 모델"""
+    body = client.get("/ai/models").json()
+    assert len(body["models"]) == 3
+    assert body["default"] == "elegant"
+    assert all(m["thumbnail_url"] for m in body["models"])
+
+
+def test_pipeline_uses_selected_model(client):
+    """model_key로 전속 모델을 선택하면 응답에 반영된다"""
+    product_id = _upload_product(client)
+    r = client.post("/pipeline/run", json={"product_id": product_id, "model_key": "natural"}).json()
+    assert r["model_key"] == "natural"
+    assert r["model_name"] == "깨끗·내추럴"
 
 
 def test_identity_lock_only_when_model_reference_present():
