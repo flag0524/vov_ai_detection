@@ -471,6 +471,52 @@ def test_contents_empty_when_no_generation(client):
     resp = client.get("/contents")
     assert resp.json()["items"] == []
 
+def test_export_bytes_produces_exact_instagram_dimensions():
+    """export_bytes가 포맷별 정확한 픽셀 크기 JPEG를 만든다"""
+    import io as _io
+    from PIL import Image
+    from app.services.export import export_bytes
+    buf = _io.BytesIO()
+    Image.new("RGB", (1000, 1000), color=(50, 80, 120)).save(buf, format="PNG")
+    src = _io.BytesIO(buf.getvalue())
+    # export_bytes는 경로를 받으므로 임시 파일로
+    import tempfile, os as _os
+    p = _os.path.join(tempfile.mkdtemp(), "s.png")
+    open(p, "wb").write(buf.getvalue())
+    for fmt, (w, h) in (("feed", (1080, 1350)), ("reel", (1080, 1920))):
+        data = export_bytes(p, fmt)
+        assert Image.open(_io.BytesIO(data)).size == (w, h)
+
+
+def test_export_endpoint_downloads_resized_jpeg(client, monkeypatch):
+    """GET /contents/{id}/export?format=feed → 1080x1350 JPEG 첨부"""
+    import io as _io
+    from PIL import Image
+    # 화보 생성 (스텁이라 image_url은 stub) → 로컬 소스로 대체
+    product_id = _upload_product(client)
+    client.post("/pipeline/run", json={"product_id": product_id})
+    # 스텁 화보는 내보낼 수 없으니, _local_source가 실제 파일을 반환하도록 패치
+    import app.api.contents as contents_mod
+    fake = _io.BytesIO()
+    Image.new("RGB", (1200, 1600), color=(200, 30, 30)).save(fake, format="JPEG")
+    import tempfile, os as _os
+    fp = _os.path.join(tempfile.mkdtemp(), "src.jpg")
+    open(fp, "wb").write(fake.getvalue())
+    monkeypatch.setattr(contents_mod, "_local_source", lambda refs: fp)
+
+    resp = client.get(f"/contents/{product_id}/export", params={"format": "feed"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/jpeg"
+    assert "attachment" in resp.headers["content-disposition"]
+    assert Image.open(_io.BytesIO(resp.content)).size == (1080, 1350)
+
+
+def test_export_rejects_unknown_format(client):
+    product_id = _upload_product(client)
+    client.post("/pipeline/run", json={"product_id": product_id})
+    assert client.get(f"/contents/{product_id}/export", params={"format": "tiktok"}).status_code == 400
+
+
 def test_contents_filters_by_category(client):
     """category 쿼리로 카테고리별 필터링"""
     from PIL import Image

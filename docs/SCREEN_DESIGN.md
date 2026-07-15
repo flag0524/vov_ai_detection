@@ -291,8 +291,8 @@
 | 기능 | 설명 | API |
 |---|---|---|
 | 콘텐츠 카드 목록 | 상품별 산출물 묶음(화보/릴스/카피) + 상태 | `GET /contents` 신설 필요 |
-| 포맷별 다운로드 | Feed 1080x1350, Reel/Story 1080x1920 리사이즈 산출물 (B-3) | `GET /contents/{id}/export?format=` 신설 필요 |
-| 캡션 복사 | caption + hashtags + ad_copy 클립보드 복사 (인스타 등록 준비) | 클라이언트 |
+| 포맷별 다운로드 ✅ | Feed 1080x1350, Reel/Story 1080x1920 센터크롭+리사이즈 (B-3) | `GET /contents/{id}/export?format=` — 화보 로컬 소스(없으면 CDN 다운로드), 스텁이면 409 |
+| 캡션 복사 ✅ | caption + hashtags + ad_copy 클립보드 복사 (인스타 등록 준비) | 클라이언트 `navigator.clipboard` |
 | 검수 진입 | 검수대기 건 → SCR-002 | 라우팅 |
 
 ### 5.3 범위 주의
@@ -328,7 +328,7 @@
 | `GET /contents` (목록, `?category=` 필터) ✅ | SCR-004 | 완료 (프론트 라이브러리 뷰 연동) |
 | `PATCH /contents/{id}` (승인) | SCR-002 | 중 |
 | `PATCH /jobs/{id}` (폐기) | SCR-002 | 하 |
-| `GET /contents/{id}/export?format=` | SCR-004 | B-3와 함께 |
+| `GET /contents/{id}/export?format=` (feed/reel/story 리사이즈 다운로드) ✅ | SCR-004 | 완료 |
 
 ---
 

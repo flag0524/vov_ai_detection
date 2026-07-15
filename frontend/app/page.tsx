@@ -267,6 +267,26 @@ export default function Home() {
   const [libCategory, setLibCategory] = useState<string>("");
   const [libLoading, setLibLoading] = useState(false);
   const [selected, setSelected] = useState<LibraryItem | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // 인스타 포맷 다운로드 (Feed 1080x1350 / Reel·Story 1080x1920)
+  function downloadFormat(productId: string, format: string) {
+    window.open(`${API_BASE}/contents/${productId}/export?format=${format}`, "_blank");
+  }
+
+  // 캡션 + 해시태그 + 광고카피를 클립보드에 복사 (인스타 등록 준비)
+  async function copyCaption(item: LibraryItem) {
+    const text = [item.caption, (item.hashtags ?? []).join(" "), item.ad_copy]
+      .filter(Boolean)
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   useEffect(() => {
     if (view !== "library") return;
@@ -1159,6 +1179,25 @@ export default function Home() {
                     alt="화보"
                     className="w-full rounded-lg border border-[#2a2a31]"
                   />
+                  {/* 인스타 포맷 다운로드 */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ["feed", "Feed 1080×1350"],
+                        ["reel", "Reel 1080×1920"],
+                        ["story", "Story 1080×1920"],
+                      ] as const
+                    ).map(([fmt, label]) => (
+                      <button
+                        key={fmt}
+                        type="button"
+                        onClick={() => downloadFormat(selected.product_id, fmt)}
+                        className="rounded-full border border-[#33333c] px-3 py-1 text-[11px] text-zinc-300 hover:border-violet-500 hover:text-violet-200"
+                      >
+                        ↓ {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1175,7 +1214,16 @@ export default function Home() {
 
               {selected.caption && (
                 <div className="border-t border-[#2a2a31] pt-3">
-                  <p className="mb-1 text-xs font-medium text-zinc-400">SNS 카피</p>
+                  <div className="mb-1 flex items-center justify-between">
+                    <p className="text-xs font-medium text-zinc-400">SNS 카피</p>
+                    <button
+                      type="button"
+                      onClick={() => copyCaption(selected)}
+                      className="rounded-full border border-[#33333c] px-3 py-1 text-[11px] text-zinc-300 hover:border-violet-500 hover:text-violet-200"
+                    >
+                      {copied ? "복사됨 ✓" : "캡션 복사"}
+                    </button>
+                  </div>
                   <p className="text-sm text-zinc-200">{selected.caption}</p>
                   {selected.hashtags?.length > 0 && (
                     <p className="mt-1 text-sm text-violet-300">

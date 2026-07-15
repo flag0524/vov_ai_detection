@@ -1,4 +1,5 @@
 # 생성 이미지를 인스타그램 포맷(Feed/Reel/Story)으로 리사이즈·크롭하는 모듈
+import io
 import os
 
 from PIL import Image
@@ -31,6 +32,18 @@ def export_instagram(source_path: str, output_dir: str, formats: list = None) ->
             resized.save(out_path, "JPEG", quality=92)
             results[fmt] = out_path
     return results
+
+
+def export_bytes(source_path: str, fmt: str) -> bytes:
+    """이미지를 지정 포맷 하나로 크롭·리사이즈해 JPEG 바이트로 반환한다 (다운로드용)."""
+    if fmt not in FORMATS:
+        raise ValueError(f"지원하지 않는 포맷: {fmt} (지원: {list(FORMATS.keys())})")
+    target_w, target_h = FORMATS[fmt]
+    with Image.open(source_path) as img:
+        out = _center_crop_resize(img.convert("RGB"), target_w, target_h)
+    buf = io.BytesIO()
+    out.save(buf, "JPEG", quality=92)
+    return buf.getvalue()
 
 
 def _center_crop_resize(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
