@@ -1,0 +1,44 @@
+{
+  "default": "elegant",
+  "models": [
+    {
+      "key": "elegant",
+      "name": "우아·모던",
+      "height_cm": 170,
+      "hair_style": "sleek pulled-back dark hair",
+      "mood": "poised elegant",
+      "fashion_style": "modern minimal",
+      "reference_urls": [
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/0925c503-8ad5-46dd-a910-503321d4b159.jpeg",
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/25ae8356-5878-4725-b199-9f12de6a08e1.jpeg",
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/83ba0eed-8d94-4241-8f29-5520303973b9.jpeg"
+      ]
+    },
+    {
+      "key": "chic",
+      "name": "세련·시크",
+      "height_cm": 169,
+      "hair_style": "sleek long dark hair",
+      "mood": "sophisticated chic",
+      "fashion_style": "high-end editorial",
+      "reference_urls": [
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/cda42f99-a114-4db0-8852-ab5e253d1ddf.jpeg",
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/2ff89fac-41f5-455c-aef8-7d3afa344c3b.jpeg",
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/8464a9af-32e1-45b2-b992-a9ca08cf2b30.jpeg"
+      ]
+    },
+    {
+      "key": "natural",
+      "name": "깨끗·내추럴",
+      "height_cm": 170,
+      "hair_style": "natural dark hair with soft texture",
+      "mood": "fresh approachable",
+      "fashion_style": "clean minimal",
+      "reference_urls": [
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/d8794cf6-9cbf-44dc-898d-81d0c247e079.jpeg",
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/59926f0c-7324-4df8-94af-3b867679aed8.jpeg",
+        "https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/85bfa3ce-96ae-4cda-84d8-7206d124e914.jpeg"
+      ]
+    }
+  ]
+}

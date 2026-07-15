@@ -25,10 +25,14 @@ NATURALNESS_MOTION_PROMPT = (
 )
 
 # PRD FR-7 / TRD §6 — 영상 Negative Prompt
+# 보행 프레임 왜곡·비율 왜곡 방지 (물리 엔진 레이어는 불가 — 네거티브 + 검수로 관리)
 NATURALNESS_MOTION_NEGATIVE = (
     "robotic movement, jerky motion, unnatural gait, sliding feet, "
     "frame jitter, face morphing, twitching face, expression flickering, "
-    "limb distortion, teleporting body parts, frozen expression"
+    "limb distortion, teleporting body parts, frozen expression, "
+    "exaggerated body proportions, unnaturally elongated legs, stretched torso, "
+    "warping clothing, garment texture flickering, changing outfit details, "
+    "cartoon, anime, CGI look, AI artifacts, artificial, low quality"
 )
 
 
@@ -64,7 +68,9 @@ def generate_video(image_url: str, duration_sec: int = 10, aspect_ratio: str = "
                 "negative_prompt": NATURALNESS_MOTION_NEGATIVE,
                 "duration": duration_sec,
             },
-            timeout_sec=600,  # 영상은 이미지보다 오래 걸림
+            # 영상은 이미지보다 훨씬 오래 걸린다. 실측 600초 초과 사례가 있어 상향.
+            # (파이프라인에서 분리해 화보 확인 후 트리거하므로 긴 대기가 허용된다 — ADR-013)
+            timeout_sec=1200,
         )
         video = result.get("video") or {}
         video_url = video.get("url") if isinstance(video, dict) else video

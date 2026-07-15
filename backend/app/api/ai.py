@@ -14,6 +14,14 @@ from app.models.entities import AIModel, GenerationJob, Product
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
+@router.get("/models")
+def list_models():
+    """전속 모델 목록 (SCR-003). 각 모델은 다각도 참조로 얼굴이 고정된다.
+    thumbnail_url은 정면 참조 컷(Higgsfield CDN)이라 프론트에서 바로 표시 가능."""
+    from agents import model_registry
+    return {"models": model_registry.list_models(), "default": model_registry.default_key()}
+
+
 class ModelCreateRequest(BaseModel):
     hair_style: str = "straight black"
     age: str = "late 20s"
@@ -101,6 +109,7 @@ def generate_image(req: ImageGenerateRequest, db: Session = Depends(get_db)):
         soul_reference_id=ai_model.soul_reference_id,
         product_image_path=product.image_ref or "",
         model_id=req.model_id,
+        negative_prompt=prompt_result["negative_prompt"],
     )
 
     job = GenerationJob(

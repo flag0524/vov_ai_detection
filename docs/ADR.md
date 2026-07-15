@@ -110,6 +110,69 @@
 - **개발 방식**: PR #1은 즉시 머지, 검수 UI는 `feature/review-ui` 새 브랜치. 개발·테스트는 스텁 모드(크레딧 0), 완성 후 실생성 1회로 승인→영상 흐름 최종 확인
 - **결과**: 재생성 루프에서 영상 크레딧 낭비 제거, "생성→검수→배포준비" 운영 루프가 한 화면에서 완결. PRD "무인 파이프라인" 문구는 "자동 구간 + 승인 게이트" 구조로 재해석 (tests.md 기준 개정 필요)
 
+#### ADR-013 ① 구현 완료 — 영상 이연 (2026-07-09) ✅
+
+- **트리거된 실측 문제**: 릴스 생성이 **600초를 초과**해 동기 파이프라인이 타임아웃 → 스텁 강등. 앱에서 릴스가 항상 스텁으로 뜨는 상태였다.
+- **구현**: `POST /pipeline/run`은 **화보 + SNS 카피까지만** 생성하고 `video_url: null`을 반환한다. 릴스는 화보를 확인한 뒤 **`POST /pipeline/video`**{product_id, camera_motion}로 트리거한다 — 해당 상품의 **최신 화보**를 image-to-video로 변환하므로 화보와 자동 일치한다.
+- **대기 한도**: agent4 `timeout_sec` 600 → **1200**으로 상향 (파이프라인에서 분리했으므로 긴 대기가 허용된다).
+- **프론트**: 결과 화면에 "이 화보로 릴스 생성" 버튼. 화보가 마음에 들 때만 영상 크레딧을 쓴다.
+- **효과**: ① 파이프라인이 빨라져 타임아웃 소멸 ② 버려질 화보에 영상 크레딧을 쓰지 않음 ③ 라이브러리(`GET /contents`)는 영상이 생성된 건에만 릴스를 표시.
+
+## ADR-014. 전속 가상 모델 운영 계획 — Elements(참조) 방식 얼굴 고정 + 파일럿 GO/NO-GO ✅
+
+- **일자**: 2026-07-06 (사용자 승인, /grill-me 인터뷰로 확정)
+- **컨텍스트**: "VOV 퀄리티가 나온다면 제이블랑 인스타 홍보를 AI로 제작"이라는 비즈니스 목표. 제약: 모델 얼굴 동일, 영상 움직임·배경 자연스러움, VOV 인스타 벤치마크. 프로브로 확인된 신규 사실: Platform API에 `soul/{standard|reference|character}` 3개 모드가 존재하며 `custom_reference_id`(UUID)·`style_id`(UUID)·`seed`(int) 파라미터를 받는다 — MCP 구독 없이 참조 기반 얼굴 고정이 가능할 수 있음 (MCP 계정은 free/0 유지).
+- **결정**:
+  1. **얼굴 동일성 = Elements(참조 이미지) 방식** — Soul 학습(MCP 구독 필요) 대신 `soul/character` + `custom_reference_id` 경로. 등록 방법 확인이 기술검증 1순위
+  2. **전속 모델 확정 = 후보 생성 → 사장님 선정** — 시드를 바꿔가며 후보 얼굴 4~6장 생성, 1명 선정 후 canonical reference로 등록
+  3. **VOV 벤치마크 = 레퍼런스 게시물 분석 → 프롬프트 반영** — 사용자가 제공할 VOV 게시물 3~5개에서 색감·배경·포즈·카메라·영상 템포·카피 톤을 분석해 템플릿에 스타일 언어로 반영. VOV 이미지 자체는 생성 모델에 주입하지 않음 (저작권·부정경쟁 리스크 회피)
+  4. **GO/NO-GO = 파일럿 육안 평가** — 전속 모델 확정 후 실상품 1~2개로 화보 4장+릴스 1개 생성, VOV 레퍼런스와 나란히 사용자 육안 판정. 미달 시 원인별 개선 후 재파일럿
+  5. **운영 규모 = 파일럿 후 결정** (초기 가이드: 주 2회 게시, 게시당 화보 1~2장+릴스 1개)
+  6. **발행 = 담당자 수동 게시 유지** (PRD 범위 '등록 준비까지' 불변)
+- **실행 순서**: ① 얼굴 고정 기술검증 (custom_reference_id 등록 경로 + soul/character 소규모 실증) → ② 후보 모델 생성·선정 → ③ 검수 UI 구현 (ADR-013) → ④ 파일럿 → GO/NO-GO
+- **결과**: MCP 구독 비용 없이 기존 Platform API 크레딧으로 진행 가능성 확보. 기술검증 실패 시 대안(MCP 구독+Soul 학습)으로 회귀하는 분기점을 ①에 배치.
+
+---
+
+## ADR-015. 상품 원본 보존 = flux-2 image_urls 참조 생성 (soul/standard text2image 대체) ✅
+
+- **일자**: 2026-07-09 (사용자 지시로 실증 후 반영)
+- **컨텍스트**: "등록 상품과 화보가 다르게 나온다"(#3)의 근본 원인 확정. 기존 `agent3.generate_image`는 `higgsfield-ai/soul/standard`(text2image)에 프롬프트만 보내 상품 이미지를 참조로 안 넣었다 → 글자 설명만 보고 새 옷 생성. 실측: `soul`의 `custom_reference_id`는 **인물(얼굴) 참조**라 옷걸이 상품 사진을 넣으면 의상이 무시된다(랜덤 검정 코디 확인). 반면 **`flux-2` + `image_urls:[상품URL]`은 상품(디자인·색상·레이스 패턴·실루엣)을 보존**했다 (원본 흰 레이스 블라우스+차콜 데님 스커트가 도심 스트리트 화보로 재현, 육안 확인).
+- **결정**:
+  1. **화보 이미지 생성 = `flux-2`(image_urls 참조)** — `soul/standard` 텍스트 생성 대체. 상품 이미지를 `POST /files/generate-upload-url`(presigned)→PUT로 업로드해 public_url을 얻고 `image_urls`에 주입. `resolution:"2k"`, `aspect_ratio:"9:16"`. flux-2는 동기적으로 빠르게 완료돼 파이프라인 구조 유지(custom-references 비동기 완료 대기 불필요).
+  2. **모델 얼굴 일관성(#4)은 별도 축** — flux-2 `image_urls`에 canonical 모델 참조 이미지를 함께 넣어 달성(`JBLANC_MODEL_REFERENCE_URL` 옵션). ADR-014의 얼굴 참조와 결합해 **상품+얼굴 2축 참조**로 발전.
+  3. 영상(릴스)은 `higgsfield-ai/dop/standard`(image_url) 유지 — 화보를 image-to-video로 변환하므로 화보와 자동 일치.
+- **실측 스키마**: 업로드 `/files/generate-upload-url`{content_type}→{public_url,upload_url}; 생성 `flux-2`{prompt(필수), image_urls[array URL], resolution∈1k|2k, aspect_ratio}. 알 수 없는 필드는 조용히 무시되므로 정확한 이름 필수.
+- **결과**: 상품 보존 실증 완료(`storage/results/flux_tryon.jpg`, `flux_tryon_reel.mp4`). agent3 교체 + `higgsfield_client.upload_image()` 추가. 스텁 모드/테스트 무영향.
+
+### ADR-015 후속: 전속 모델 canonical 참조 등록 완료 (ADR-014 ①② 이행) ✅
+
+- **일자**: 2026-07-09 (1차 후보 4장 → A 선정 → **2차 재선정**: 2026 HOT SUMMER CAMPAIGN 사양(169~170cm)으로 3인 재생성 후 **③ 우아·모던(170cm)** 최종 확정)
+- **모델**: ③ 우아·모던 — 넘긴 머리, 또렷한 눈매·주근깨, 기품 있는 무드, 170cm. 원본 `storage/model/canonical_model.jpg`
+- **참조 이미지 규칙**: 반드시 **중립 흰 티셔츠 + 무지 스튜디오 배경**으로 만든다. 캠페인 의상을 입힌 포트레이트를 참조로 쓰면 **그 의상이 이후 모든 화보에 혼입된다**.
+- **등록 URL** (`.env`의 `JBLANC_MODEL_REFERENCE_URL`, .env는 gitignore이므로 여기에 보존):
+  `https://d3snorpfx4xhv8.cloudfront.net/247c651d-ba0e-4286-a65a-c5b910db981c/0925c503-8ad5-46dd-a910-503321d4b159.jpeg`
+- **체형 사양**: `PROPORTION_PROMPT` = 169~170cm, 7~7.5등신, NOT 9-head figure (AI 특유의 과한 비율 억제)
+- **동작**: agent3가 `image_urls = [상품 참조, 모델 참조]` 2장을 flux-2에 넣고, `apply_identity_lock()`이 "얼굴·헤어·정체성은 모델 참조에서만, 의상은 상품 참조에서" 절을 프롬프트에 덧붙인다. **이 절이 없으면 모델 참조의 흰 티셔츠가 결과물에 섞인다(실측).**
+- **검증**: 실제 코드 경로로 생성 → `storage/results/canonical_test.jpg`. 얼굴=후보 A 동일, 의상=원본 레이스 블라우스+데님 스커트 보존, 모델 참조의 티셔츠·스튜디오 배경 미혼입, 배경=`concrete_architecture` 프리셋. **상품 보존(#3) + 모델 일관성(#4) 동시 달성.**
+- **모델 교체 시**: 새 포트레이트를 업로드해 `JBLANC_MODEL_REFERENCE_URL`만 교체하면 된다 (코드 변경 불필요).
+
+#### LoRA 대신 다각도 참조 (2026-07-09) ✅
+
+- **컨텍스트**: "LoRA 학습(동일인 20~30장, 얼굴 다각도)" 제안. 그러나 LoRA는 자체 Diffusion 인프라가 필요해 ADR-001 위반이고, Higgsfield `custom-references`(가장 근접)는 **얼굴 전용이라 상품을 못 싣고**, 상품을 보존하는 유일한 모델 `flux-2`는 `custom_reference_id`를 받지 않는다 → **학습된 얼굴 + 상품 보존을 한 호출로 결합 불가**.
+- **결정**: LoRA 취지(얼굴 다각도로 정체성 강화)를 **flux-2 `image_urls` 다각도 참조**로 구현. `JBLANC_MODEL_REFERENCE_URL`을 **쉼표 구분 다중 URL**(정면·45도·측면)로 확장. 전송 순서는 `[상품, 모델 정면, 45도, 측면]`.
+- **A/B 실측**: 참조 2장(상품+정면) vs 4장(상품+정면+45도+측면)을 같은 상품·배경으로 비교 → **다각도 쪽이 얼굴 일치도가 더 안정적이고, 상품 참조 희석은 없었다**(캡소매·레이스 패널·헴 모두 보존). 다각도 채택.
+- **다각도 컷 제작법**: canonical 정면을 `image_urls` 참조로 넣고 "동일 인물, 45도/측면" 프롬프트로 생성 → `storage/model/canonical_45.jpg`, `canonical_profile.jpg`. 반드시 중립 흰 티셔츠·무지 배경 유지.
+
+#### 전속 모델 3인 레지스트리 + 선택 피팅 (2026-07-09) ✅
+
+- **모델 3인**: `elegant` 우아·모던(170cm) · `chic` 세련·시크(169cm) · `natural` 깨끗·내추럴(170cm). 각 모델마다 **다각도 참조 3장**(정면·45도·측면) 보유.
+- **저장소**: `storage/model/registry.json` (key·이름·키·헤어·무드·reference_urls). 로더 `agents/model_registry.py`. **DB 컬럼을 추가하지 않아 기존 dev DB 무손상** — 참조 URL은 Higgsfield CDN이라 프론트 썸네일로 바로 쓴다.
+- **환경변수 폐기**: 단일 모델용 `JBLANC_MODEL_REFERENCE_URL`은 레지스트리로 대체됐다.
+- **API**: `GET /ai/models` → 모델 목록+기본값(SCR-003). `POST /pipeline/run`에 `model_key` 추가 → 해당 모델의 다각도 참조 + 헤어·무드 속성으로 프롬프트·생성. 응답에 `model_key`/`model_name`.
+- **중요**: 프롬프트의 모델 묘사(헤어·무드)를 **참조 얼굴과 일치**시켜야 얼굴 고정이 안정적이다. 그래서 `model_attrs`도 레지스트리에서 가져온다 (DB AIModel 속성 대신).
+- **검증**: 같은 상품으로 3인 각각 피팅 → 얼굴은 모델별로 다르고 상품(캡소매 레이스 블라우스+데님 스커트)은 전부 보존 (`storage/results/fit_chic.jpg`, `fit_natural.jpg`).
+
 ---
 
 ## 기록 규칙

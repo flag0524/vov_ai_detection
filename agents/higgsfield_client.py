@@ -23,6 +23,26 @@ def _auth_header() -> dict:
     return {"Authorization": f"Key {API_KEY}:{API_SECRET}"}
 
 
+def upload_image(image_path: str, content_type: str = "image/jpeg") -> str:
+    """로컬 이미지를 Higgsfield에 업로드하고 공개 URL(public_url)을 반환한다.
+    presigned upload_url 발급(POST /files/generate-upload-url) → PUT 바이트 순서."""
+    link = httpx.post(
+        f"{BASE_URL}/files/generate-upload-url",
+        headers={**_auth_header(), "Content-Type": "application/json"},
+        json={"content_type": content_type},
+        timeout=30,
+    )
+    if link.status_code >= 400:
+        raise HiggsfieldError(f"upload-url 발급 실패 ({link.status_code}): {link.text}")
+    info = link.json()
+    with open(image_path, "rb") as f:
+        data = f.read()
+    put = httpx.put(info["upload_url"], content=data, headers={"Content-Type": content_type}, timeout=120)
+    if put.status_code >= 400:
+        raise HiggsfieldError(f"이미지 PUT 실패 ({put.status_code})")
+    return info["public_url"]
+
+
 def submit(model_id: str, payload: dict) -> dict:
     """생성 작업을 제출하고 request_id/status_url을 반환한다."""
     resp = httpx.post(
