@@ -16,6 +16,14 @@ frontend/.env.local
 test.zip
 *.zip
 
+# 생성·업로드 산출물 바이너리 (런타임 파일, 히스토리에 넣지 않는다)
+# storage/model/registry.json 은 런타임에 필요하므로 계속 추적한다.
+storage/results/
+storage/uploads/
+storage/model/*.jpg
+storage/model/*.mp4
+storage/model/*.png
+
 # OS
 .DS_Store
 Thumbs.db
