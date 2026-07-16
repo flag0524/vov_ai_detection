@@ -185,10 +185,43 @@ class VideoRequest(BaseModel):
     camera_motion: str = "dolly_in"
 
 
+def _run_reel_job(job_id: str, image_url: str, camera_motion: str):
+    """릴스 생성을 백그라운드 스레드에서 실행한다 (Redis 미도입 — 인프로세스 대체).
+    자체 DB 세션을 열어 job 상태를 queued→running→done/failed로 갱신한다.
+    진행률은 프론트가 GET /jobs/{id}로 폴링해 확인한다."""
+    from app.models.base import SessionLocal
+    from agents.agent4_video_creator import generate_video
+
+    db = SessionLocal()
+    try:
+        job = db.query(GenerationJob).filter(GenerationJob.job_id == job_id).first()
+        if not job:
+            return
+        job.status = "running"
+        db.commit()
+        try:
+            result = generate_video(image_url=image_url, camera_motion=camera_motion)
+            refs = dict(job.result_refs or {})
+            refs.update({"video_url": result["video_url"], "stub": result.get("stub", False)})
+            job.result_refs = refs
+            job.status = "done"
+        except Exception as e:  # 실패해도 job은 failed로 남겨 폴링이 끝나게 한다
+            refs = dict(job.result_refs or {})
+            refs["error"] = str(e)
+            job.result_refs = refs
+            job.status = "failed"
+        db.commit()
+    finally:
+        db.close()
+
+
 @router.post("/video")
 def generate_reel(req: VideoRequest, db: Session = Depends(get_db)):
-    """화보를 확인한 뒤 릴스를 생성한다 (ADR-013 — 영상은 승인 이후로 이연).
-    해당 상품의 최신 화보 이미지를 image-to-video로 변환하므로 화보와 자동 일치한다."""
+    """릴스 생성을 비동기로 시작한다 (ADR-013). job_id를 즉시 반환하고,
+    프론트는 GET /jobs/{job_id}로 상태(queued→running→done)를 폴링한다.
+    최신 화보를 image-to-video로 변환하므로 화보와 자동 일치한다."""
+    import threading
+
     img_job = (
         db.query(GenerationJob)
         .filter(GenerationJob.product_id == req.product_id, GenerationJob.type == "image")
@@ -198,22 +231,18 @@ def generate_reel(req: VideoRequest, db: Session = Depends(get_db)):
     if not img_job or not (img_job.result_refs or {}).get("image_url"):
         raise HTTPException(status_code=404, detail="생성된 화보가 없습니다")
 
-    from agents.agent4_video_creator import generate_video
-
     image_url = img_job.result_refs["image_url"]
-    video_result = generate_video(image_url=image_url, camera_motion=req.camera_motion)
-
+    job_id = str(uuid.uuid4())
     vid_job = GenerationJob(
-        job_id=str(uuid.uuid4()), type="video", product_id=req.product_id,
-        model_id=img_job.model_id, status="done",
-        result_refs={"video_url": video_result["video_url"], "camera_motion": req.camera_motion},
+        job_id=job_id, type="video", product_id=req.product_id,
+        model_id=img_job.model_id, status="queued",
+        result_refs={"camera_motion": req.camera_motion},
     )
     db.add(vid_job)
     db.commit()
 
-    return {
-        "product_id": req.product_id,
-        "video_url": video_result["video_url"],
-        "camera_motion": req.camera_motion,
-        "stub": video_result.get("stub", False),
-    }
+    threading.Thread(
+        target=_run_reel_job, args=(job_id, image_url, req.camera_motion), daemon=True
+    ).start()
+
+    return {"job_id": job_id, "status": "queued", "camera_motion": req.camera_motion}

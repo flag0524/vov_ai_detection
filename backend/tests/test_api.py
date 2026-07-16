@@ -90,21 +90,87 @@ def test_pipeline_run_full_e2e_stub(client):
     assert body["stubs"]["image"] is True
 
 
-def test_reel_generated_only_after_photoshoot(client):
-    """ADR-013: 릴스는 화보 확인 후 POST /pipeline/video로 생성한다"""
+def test_reel_generation_is_async(client):
+    """ADR-013 + 비동기: 릴스 요청은 job_id를 즉시 반환하고(queued),
+    프론트가 GET /jobs/{id}로 폴링한다. 화보 없으면 404."""
     product_id = _upload_product(client)
     # 화보 없이 영상 요청 → 404
     assert client.post("/pipeline/video", json={"product_id": product_id}).status_code == 404
-    # 화보 생성 후에는 릴스 생성 가능
+    # 화보 생성 후 릴스 요청 → 즉시 queued + job_id
     client.post("/pipeline/run", json={"product_id": product_id})
     resp = client.post("/pipeline/video", json={"product_id": product_id, "camera_motion": "orbit"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["video_url"]
-    assert body["camera_motion"] == "orbit"
-    # 라이브러리에도 영상이 붙는다
-    items = client.get("/contents").json()["items"]
-    assert items[0]["video_url"] == body["video_url"]
+    assert body["status"] == "queued"
+    assert body["job_id"]
+    # 큐드 상태의 영상 job이 생겼고 아직 video_url은 없다
+    job = client.get(f"/jobs/{body['job_id']}").json()
+    assert job["status"] in ("queued", "running", "done")
+
+
+def test_reel_worker_marks_job_done(monkeypatch):
+    """백그라운드 워커가 job을 queued→done으로 전이시키고 video_url을 기록한다"""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.models.base import Base
+    from app.models.entities import GenerationJob
+    import app.models.base as base_mod
+    import agents.agent4_video_creator as a4
+    from app.api.pipeline import _run_reel_job
+
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    TS = sessionmaker(bind=eng)
+    monkeypatch.setattr(base_mod, "SessionLocal", TS)
+    monkeypatch.setattr(a4, "generate_video", lambda **k: {"video_url": "https://x/y.mp4", "stub": False})
+
+    s = TS()
+    s.add(GenerationJob(job_id="v1", type="video", status="queued", result_refs={"camera_motion": "orbit"}))
+    s.commit()
+    s.close()
+
+    _run_reel_job("v1", "https://img.jpg", "orbit")
+
+    s = TS()
+    job = s.query(GenerationJob).filter_by(job_id="v1").first()
+    assert job.status == "done"
+    assert job.result_refs["video_url"] == "https://x/y.mp4"
+    s.close()
+
+
+def test_reel_worker_marks_failed_on_error(monkeypatch):
+    """워커에서 예외가 나면 job을 failed로 남겨 폴링이 끝나게 한다"""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.models.base import Base
+    from app.models.entities import GenerationJob
+    import app.models.base as base_mod
+    import agents.agent4_video_creator as a4
+    from app.api.pipeline import _run_reel_job
+
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    TS = sessionmaker(bind=eng)
+    monkeypatch.setattr(base_mod, "SessionLocal", TS)
+
+    def boom(**k):
+        raise RuntimeError("gen fail")
+    monkeypatch.setattr(a4, "generate_video", boom)
+
+    s = TS()
+    s.add(GenerationJob(job_id="v2", type="video", status="queued", result_refs={}))
+    s.commit()
+    s.close()
+
+    _run_reel_job("v2", "https://img.jpg", "dolly_in")
+
+    s = TS()
+    job = s.query(GenerationJob).filter_by(job_id="v2").first()
+    assert job.status == "failed"
+    assert "gen fail" in job.result_refs["error"]
+    s.close()
 
 
 def test_pipeline_run_404_for_missing_product(client):

@@ -165,28 +165,46 @@ export default function Home() {
   // 전속 모델 선택 — 선택한 모델의 다각도 참조로 피팅한다
   const [models, setModels] = useState<FashionModel[]>([]);
   const [modelKey, setModelKey] = useState<string>("");
-  // 릴스는 화보 확인 후 별도 생성 (ADR-013) — 수 분 걸린다
+  // 릴스는 화보 확인 후 비동기 생성 (ADR-013) — job_id 폴링으로 진행률 표시
   const [reelUrl, setReelUrl] = useState<string | null>(null);
   const [reelStage, setReelStage] = useState<"idle" | "running" | "error">("idle");
+  const [reelElapsed, setReelElapsed] = useState(0);
 
   async function handleGenerateReel() {
     if (!result) return;
     setReelStage("running");
+    setReelElapsed(0);
+    const started = Date.now();
+    const tick = setInterval(
+      () => setReelElapsed(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
     try {
       const res = await fetch(`${API_BASE}/pipeline/video`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_id: result.product_id,
-          camera_motion: camMotion,
-        }),
+        body: JSON.stringify({ product_id: result.product_id, camera_motion: camMotion }),
       });
-      if (!res.ok) throw new Error(`릴스 생성 실패 (${res.status})`);
-      const data = await res.json();
-      setReelUrl(data.video_url);
-      setReelStage("idle");
+      if (!res.ok) throw new Error(`릴스 요청 실패 (${res.status})`);
+      const { job_id } = await res.json();
+
+      // GET /jobs/{id} 폴링 — 상태가 done/failed가 될 때까지 (최대 ~20분)
+      for (let i = 0; i < 240; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const job = await fetch(`${API_BASE}/jobs/${job_id}`).then((r) => r.json());
+        if (job.status === "done") {
+          setReelUrl(job.result_refs?.video_url ?? null);
+          setReelStage("idle");
+          clearInterval(tick);
+          return;
+        }
+        if (job.status === "failed") throw new Error("생성 실패");
+      }
+      throw new Error("시간 초과");
     } catch {
       setReelStage("error");
+    } finally {
+      clearInterval(tick);
     }
   }
 
@@ -818,7 +836,9 @@ export default function Home() {
                     disabled={reelStage === "running"}
                     className="rounded-lg bg-violet-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-40"
                   >
-                    {reelStage === "running" ? "생성 중... (수 분)" : "이 화보로 릴스 생성"}
+                    {reelStage === "running"
+                      ? `생성 중... ${reelElapsed}초 (수 분 소요)`
+                      : "이 화보로 릴스 생성"}
                   </button>
                 )}
               </div>
